@@ -77,8 +77,11 @@ function createApp(file, persist = writeSnapshot) {
 }
 
 if (require.main === module) {
-  const file = resolve(process.argv[2] ?? join(__dirname, 'db.json'));
-  const port = Number(process.argv[3] ?? 3000);
-  createApp(file).listen(port, '127.0.0.1', () => console.log(`USAD API listening on 127.0.0.1:${port}`));
+  const file = resolve(process.argv[2] ?? (process.env.USAD_DATA_FILE || join(__dirname, 'db.json')));
+  const port = Number(process.argv[3] ?? (process.env.PORT || 3000));
+  const host = process.env.RAILWAY_ENVIRONMENT_ID ? '0.0.0.0' : '127.0.0.1';
+  const server = createApp(file).listen(port, host, () => {
+    console.log(`USAD API listening on ${host}:${server.address().port}`);
+  });
 }
 module.exports = { createApp };

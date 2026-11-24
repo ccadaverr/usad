@@ -1,7 +1,14 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const database = new URL('./db.json', import.meta.url);
+const configuredFile = process.env.USAD_DATA_FILE;
+const database = resolve(configuredFile || fileURLToPath(new URL('./db.json', import.meta.url)));
 const reset = process.argv.includes('--reset');
+if (reset && (configuredFile || process.env.RAILWAY_ENVIRONMENT_ID)) {
+  throw new Error('Database reset is only available for the default local database.');
+}
 const existing = reset ? undefined : await stat(database).catch((error) => {
   if (error.code !== 'ENOENT') throw error;
 });
@@ -20,7 +27,19 @@ if (!existing) {
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   }));
-  await writeFile(database, JSON.stringify({ tasks }, null, 2) + '\n', { flag: reset ? 'w' : 'wx' }).catch((error) => {
-    if (reset || error.code !== 'EEXIST') throw error;
-  });
+  await mkdir(dirname(database), { recursive: true });
+  const temporary = `${database}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify({ tasks }, null, 2) + '\n', { flag: 'wx', flush: true, mode: 0o600 });
+    if (reset) {
+      await rename(temporary, database);
+    } else {
+      // Publish the complete seed only if another startup has not created the database.
+      await link(temporary, database).catch((error) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }

@@ -29,6 +29,12 @@ yarn-error.log
 
 # Local task database
 /data/db.json
+/data/db.json.*.tmp
+
+# Local environment and Vercel settings
+.env
+.env.*
+.vercel/
 
 # Local browser verification output
 /.playwright-mcp/

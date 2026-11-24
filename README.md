@@ -18,7 +18,7 @@ npm run api     # Terminal 1, JSON Server listens on 127.0.0.1:3000
 npm start       # Terminal 2, open http://localhost:4200
 ```
 
-On first run, the API creates `data/db.json` from `data/seed.json` with due dates relative to that day. Later runs keep the same records. Back up `data/db.json` to keep a copy of your work. To replace it with fresh examples, stop the API, run `npm run db:reset`, and restart the API.
+On first run, the API creates `data/db.json` from `data/seed.json` with due dates relative to that day. Later runs keep the same records. Set `USAD_DATA_FILE` to use a different file for both seeding and serving. Back up `data/db.json` to keep a copy of your work. To replace the default local database with fresh examples, stop the API, run `npm run db:reset` with `USAD_DATA_FILE` unset, and restart the API.
 
 Use `npm run api` to launch `data/server.cjs`, which provides the task and garden routes. If a legacy JSON Server process is already using port 3000, stop that process before starting the command. The garden ledger starts by counting currently completed records and is saved with the next successful write. Later Undo and deletion keep earned growth. Run the server regression checks with `npm run test:api`.
 
@@ -29,7 +29,28 @@ Use `npm run api` to launch `data/server.cjs`, which provides the task and garde
 3. Find the Mac’s Wi-Fi IPv4 address in System Settings → Wi-Fi → Details → TCP/IP. On most Macs, `ipconfig getifaddr en0` also displays it.
 4. Open `http://<mac-wifi-ip>:4200` on the phone, or use the alternate Angular port from step 2.
 
-Use a trusted development network. Anyone who can reach the Angular LAN server can write through its proxy. JSON Server itself listens only on loopback. Browser requests use the same origin under `/api`.
+Use a trusted development network. Anyone who can reach the Angular LAN server can write through its proxy. The local API listens only on loopback. Browser requests use the same origin under `/api`.
+
+## Host the API on Railway
+
+Use the existing Railway service from `ccadaverr/usad` on branch `feature/usad-development` with the repository root as its root directory. Set these values in the service settings and variables.
+
+| Railway setting | Value |
+| --- | --- |
+| Builder | Dockerfile, selected by `RAILWAY_DOCKERFILE_PATH=Dockerfile.railway` |
+| Custom build command | Leave blank and clear any existing Angular build command |
+| Custom start command | Leave blank to use the Dockerfile command `npm run api` |
+| Persistent volume mount | `/data` |
+| Service variable | `USAD_DATA_FILE=/data/db.json` |
+| Node.js version | 22, supplied by `Dockerfile.railway` |
+| Port | Use Railway's provided `PORT` |
+| Replicas | `1`, because the JSON store uses one writer process |
+
+Look for `Using detected Dockerfile!` in the Railway build log. The image installs production dependencies and copies the task and garden API files. Vercel builds and hosts Angular. [Railway Dockerfile settings](https://docs.railway.com/builds/dockerfiles)
+
+Railway supplies `RAILWAY_ENVIRONMENT_ID`, which makes the API bind to `0.0.0.0`. `npm run api` seeds at startup, after the volume is mounted, and only creates the database if it is missing. Verify the service with `GET /tasks` and `GET /garden` on its Railway domain. [Railway variables](https://docs.railway.com/variables/reference) · [Railway volumes](https://docs.railway.com/volumes) · [Railway networking](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)
+
+The browser still uses same-origin `/api` URLs. Configure the Vercel rewrite after Railway assigns the API domain. This is a shared demo API without authentication. Anyone who can reach a public API domain can read and modify tasks, so use demo data there.
 
 ## Demo
 

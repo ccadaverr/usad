@@ -1,8 +1,10 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
+const { promisify } = require('node:util');
 const { gardenView, reconcileGarden } = require('./garden.cjs');
 const { createApp } = require('./server.cjs');
 
@@ -44,9 +46,10 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
   const rejected = await request('/tasks/pending', 'PATCH', { status: 'completed' });
   assert.equal(rejected.status, 500);
   assert.equal(rejected.headers.get('X-USAD-Water-Earned'), null);
+  assert.equal(rejected.headers.get('X-USAD-Garden-Level'), null);
   assert.deepEqual(snapshot(), start);
   assert.equal((await (await request('/tasks/pending')).json()).status, 'pending');
-  assert.equal((await read()).lifetime, 4);
+  assert.deepEqual(await read(), { lifetime: 4, level: 1, available: 4 });
 
   failWrite = false;
   const completed = await request('/tasks/pending', 'PATCH', { status: 'completed' });
@@ -111,4 +114,25 @@ test('the garden and watering routes restore existing history from disk after re
   runtime = await start();
   assert.deepEqual(await state(), { lifetime: 2, available: 1, level: 1 });
   assert.deepEqual(await (await water()).json(), { lifetime: 2, available: 1, level: 1 });
+});
+
+test('startup seeds a missing configured file and preserves existing database bytes', async context => {
+  const directory = mkdtempSync(join(tmpdir(), 'usad-seed-test-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const file = join(directory, 'storage', 'db.json');
+  const run = promisify(execFile);
+  const seed = (...args) => run(process.execPath, [join(__dirname, 'seed.mjs'), ...args], {
+    env: { ...process.env, USAD_DATA_FILE: file },
+  });
+
+  await Promise.all([seed(), seed()]);
+  const initial = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(initial.tasks[0].id, 'field-notes');
+  assert.match(initial.tasks[0].dueDate, /^\d{4}-\d{2}-\d{2}$/);
+
+  const existing = '{"tasks":[],"garden":{"version":1,"entries":[{"taskId":"saved"}]}}\n';
+  writeFileSync(file, existing);
+  await seed();
+  await assert.rejects(seed('--reset'), /only available for the default local database/);
+  assert.equal(readFileSync(file, 'utf8'), existing);
 });

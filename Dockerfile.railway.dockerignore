@@ -1,0 +1,10 @@
+# Only send the manifests and API runtime files to the builder.
+**
+!package.json
+!package-lock.json
+!data/
+data/**
+!data/server.cjs
+!data/garden.cjs
+!data/seed.mjs
+!data/seed.json
