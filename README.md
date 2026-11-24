@@ -1,72 +1,57 @@
-# TaskFlow
+# USAD: A Web-Based Student Task Management and Progress Tracking System
 
-A Kanban board for organising tasks: drag cards between columns, edit details in a dialog, filter by text or priority, and pick up where you left off — everything is saved in the browser.
+**ᜂᜐᜇ᜔ · usad.**
 
-Built with **Angular 20**, **Angular CDK** (drag & drop, dialog), **NgRx SignalStore** and **Tailwind CSS 4**. Business logic is covered by unit tests that run in CI.
+Munting hakbang. Tunay na pag-usad. _Small steps. Real progress._
 
-> **Live demo:** [https://tiennd-taskflow.web.app](https://tiennd-taskflow.web.app)
+The Baybayin wordmark uses locally bundled Noto Sans Tagalog under the [SIL Open Font License](public/fonts/OFL.txt).
 
-<!-- Screenshots: docs/screenshots/board.png, dialog.png, filter.png -->
+USAD is the Group 8 Student Task Tracker. It is a single-student workspace for assignments, deadlines, and completion. The board explores Angular CDK drag and drop across Pending, In Progress, and Completed.
 
-## Features
+## Run locally
 
-- **Drag and drop** — reorder cards inside a column or move them between columns, with animated placeholders.
-- **Quick add** — type a title and press Enter to add several tasks in a row; "More details…" opens the full form.
-- **Task details** — title, description, priority, labels, due date and status, edited in an accessible dialog.
-- **Overdue highlighting** — past due dates turn red, except for tasks in the last ("done") column.
-- **Columns** — add, rename (click the title) and delete columns; deleting asks for confirmation when it has tasks.
-- **Search and filter** — by title, description or label (accent-insensitive) and by priority. Drag & drop pauses while filtering so the order can't get mixed up.
-- **Live stats** — total, done and overdue counts in the header.
-- **Persistence** — the board is saved to localStorage on every change; "Reset demo" restores sample data.
-- **Responsive** — columns scroll horizontally on small screens.
-
-## Tech highlights
-
-| Area | What's used |
-| --- | --- |
-| State management | NgRx SignalStore: `withState`, `withComputed`, `withMethods`, `withHooks` (load + auto-save) |
-| Architecture | Normalised state (cards stored once, columns hold ids); all updates are **pure functions** in `board.logic.ts` |
-| Angular CDK | `cdkDropListGroup` / `cdkDropList` / `cdkDrag` with custom placeholder; unstyled `Dialog` with typed data and results |
-| Angular | Standalone components, signals, `input()` / `output()`, `@let`, `OnPush`, `afterNextRender` in a custom autofocus directive |
-| Forms | Typed reactive forms with `NonNullableFormBuilder` |
-| Styling | Tailwind CSS 4 with a few component classes (`.field`, `.btn-primary`…) and styled CDK drag states |
-| Testing | Jasmine + Karma: pure logic tests and store tests through `TestBed` |
-| CI | GitHub Actions runs the tests in headless Chrome, then builds |
-
-## Project structure
-
-```
-src/app
-├── board/
-│   ├── board.models.ts          # Card, Column, BoardState types
-│   ├── board.logic.ts           # Pure state updates (move, add, remove…) + helpers
-│   ├── board.logic.spec.ts      # Unit tests for the logic
-│   ├── board.store.ts           # NgRx SignalStore
-│   ├── board.store.spec.ts      # Store tests
-│   ├── board.storage.ts         # localStorage load/save with validation
-│   ├── board.component.ts       # Columns + drop list group + add column
-│   ├── column.component.*       # One column: drop list, rename, quick add
-│   ├── card.component.ts        # One card
-│   └── card-dialog.component.*  # Create / edit dialog
-└── shared/                      # Confirm dialog, dialog service, autofocus directive, colour helpers
-```
-
-## Getting started
+Use Node.js 22.12 or later and Chrome for the headless tests.
 
 ```bash
-npm install
-npm start        # http://localhost:4200
-npm test         # unit tests in Chrome (watch mode)
-npm run test:ci  # single run, headless
+npm ci
+npm run api     # Terminal 1, JSON Server listens on 127.0.0.1:3000
+npm start       # Terminal 2, open http://localhost:4200
 ```
 
-## Roadmap
+On first run, the API creates `data/db.json` from `data/seed.json` with due dates relative to that day. Later runs keep the same records. Back up `data/db.json` to keep a copy of your work. To replace it with fresh examples, stop the API, run `npm run db:reset`, and restart the API.
 
-- Multiple boards
-- Reorder columns by dragging
-- Keyboard-only moving of cards
-- Sync across devices with a backend
+Use `npm run api` to launch `data/server.cjs`, which provides the task and garden routes. If a legacy JSON Server process is already using port 3000, stop that process before starting the command. The garden ledger starts by counting currently completed records and is saved with the next successful write. Later Undo and deletion keep earned growth. Run the server regression checks with `npm run test:api`.
 
-## License
+### Phone on the same Wi-Fi
 
-MIT
+1. Keep `npm run api` running.
+2. Start Angular with `npm run start:lan` in place of `npm start`. To use another port, run `npm run start:lan -- --port 4220`.
+3. Find the Mac’s Wi-Fi IPv4 address in System Settings → Wi-Fi → Details → TCP/IP. On most Macs, `ipconfig getifaddr en0` also displays it.
+4. Open `http://<mac-wifi-ip>:4200` on the phone, or use the alternate Angular port from step 2.
+
+Use a trusted development network. Anyone who can reach the Angular LAN server can write through its proxy. JSON Server itself listens only on loopback. Browser requests use the same origin under `/api`.
+
+## Demo
+
+1. Open **Home** to review the next task, today’s deadlines, overdue work, and the live completion count.
+2. Choose **New task**. Submit the empty form to see validation. Enter a title, subject, due date, and priority, then create the task.
+3. Open **Board**, search by title, and filter by priority or subject. Clear the filters to enable dragging. Open the task title to edit it.
+4. On a phone, choose **Full board**. Hold the grip and move the card into **In Progress**. Scroll from the card body when browsing. The **Move to…** menu also changes stages. Refresh and select the new stage to verify it saved.
+5. Move the task to **Completed** to see USAD Bloom. Check **Progress** for the new academic total and open **Tanim** for lifetime growth and water drops. Use **Undo** in the toast to restore the previous stage and order.
+6. Stop the API and try to save a draft or refresh. Restart the API, select **Reload tasks**, and retry the save.
+
+## API and tests
+
+Angular strips `/api` when proxying requests to port 3000. Garden status is at `http://localhost:4200/api/garden` through Angular and `http://127.0.0.1:3000/garden` directly. Angular also proxies `/api/garden/water`, `/api/tasks`, and `/api/tasks/:id`. Supported operations are list and single-record **GET**, **POST**, **PATCH**, and **DELETE**. Browser refresh loads the database again. Task ordering is stored as a case-sensitive rank within each stage.
+
+```bash
+npm run build
+npm run test:ci
+npm run test:api
+```
+
+See the [implementation evidence ledger](docs/IMPLEMENTATION.md) for architecture and verification.
+
+## Attribution
+
+USAD is adapted from TaskFlow by tiennd03, whose README declares the MIT license. [TaskFlow source](https://github.com/tiennd03/taskflow) · [MIT license](LICENSE)

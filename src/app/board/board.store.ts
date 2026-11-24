@@ -1,108 +1,203 @@
-import { computed, effect } from '@angular/core';
+import { DestroyRef, NgZone, computed, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
-import * as logic from './board.logic';
-import { loadBoard, saveBoard } from './board.storage';
-import { BoardFilter, BoardState, CardInput, ColumnView, Priority } from './board.models';
+import { Observable, Subject } from 'rxjs';
+import { distinctSubjects, groupDeadlines, matchesFilter, moveRank, orderTasks, rankBetween, todayISO } from './board.logic';
+import { BoardFilter, ColumnView, STATUS_LABELS, STATUSES, Task, TaskInput, TaskStatus } from './board.models';
+import { SavedTask, TaskService } from './task.service';
 
-type BoardStoreState = BoardState & { filter: BoardFilter };
+const emptyFilter: BoardFilter = { query: '', priority: 'all', subject: '' };
 
-const initialState: BoardStoreState = {
-  columns: [],
-  cards: {},
-  filter: { query: '', priority: 'all' },
+export interface CompletionReceipt {
+  taskId: string;
+  earnedWater: boolean;
+  gardenLevel?: number;
+}
+
+interface BoardState {
+  tasks: Record<string, Task>;
+  filter: BoardFilter;
+  today: string;
+  loaded: boolean;
+  loading: boolean;
+  saving: boolean;
+  error: string;
+  notice: string;
+  completion: CompletionReceipt | null;
+  undoTask: Task | null;
+  earnedGardenLevel: number | null;
+}
+
+const initialState: BoardState = {
+  tasks: {},
+  filter: emptyFilter,
+  today: todayISO(),
+  loaded: false,
+  loading: false,
+  saving: false,
+  undoTask: null,
+  earnedGardenLevel: null,
+  error: '',
+  notice: '',
+  completion: null,
 };
 
-/**
- * The single source of truth for the board (NgRx SignalStore).
- * - state:    columns, cards, filter
- * - computed: what the UI shows (filtered columns, stats)
- * - methods:  the only way to change state; each one delegates to a pure function in board.logic.ts
- * - hooks:    load from localStorage on start, save on every change
- */
 export const BoardStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
-
-  withComputed(({ columns, cards, filter }) => ({
-    isFiltering: computed(() => filter().query.trim() !== '' || filter().priority !== 'all'),
-
-    view: computed<ColumnView[]>(() => {
-      const all = cards();
-      const f = filter();
-      return columns().map((column) => {
-        const columnCards = column.cardIds.map((id) => all[id]).filter((card) => card !== undefined);
+  withComputed(({ tasks, filter, today, loaded, loading, saving, error }) => {
+    const all = computed(() => orderTasks(Object.values(tasks())));
+    const columns = computed<Record<TaskStatus, Task[]>>(() => ({
+      pending: all().filter(({ status }) => status === 'pending'),
+      'in-progress': all().filter(({ status }) => status === 'in-progress'),
+      completed: all().filter(({ status }) => status === 'completed'),
+    }));
+    return {
+      columns,
+      subjects: computed(() => distinctSubjects(all())),
+      deadlines: computed(() => groupDeadlines(all(), today())),
+      canWrite: computed(() => loaded() && !loading() && !saving() && !error()),
+      isFiltering: computed(() => !!(filter().query.trim() || filter().priority !== 'all' || filter().subject)),
+      view: computed<ColumnView[]>(() => STATUSES.map((id) => ({
+        id,
+        title: STATUS_LABELS[id],
+        totalCount: columns()[id].length,
+        tasks: columns()[id].filter((task) => matchesFilter(task, filter())),
+      }))),
+      stats: computed(() => {
+        const pending = columns().pending.length;
+        const active = columns()['in-progress'].length;
+        const done = columns().completed.length;
+        const total = pending + active + done;
         return {
-          id: column.id,
-          title: column.title,
-          totalCount: columnCards.length,
-          cards: columnCards.filter((card) => logic.matchesFilter(card, f)),
+          pending, active, done, total,
+          remaining: pending + active,
+          percent: total ? Math.floor(done / total * 100) : 0,
         };
+      }),
+    };
+  }),
+  withMethods((store) => {
+    const api = inject(TaskService);
+    const destroyRef = inject(DestroyRef);
+    const zone = inject(NgZone);
+    let noticeTimer: ReturnType<typeof setTimeout>;
+    destroyRef.onDestroy(() => clearTimeout(noticeTimer));
+    const completed = new Subject<CompletionReceipt>();
+    destroyRef.onDestroy(() => completed.complete());
+
+    function updateTask({ awardedLevel, earnedWater, ...task }: SavedTask): void {
+      const previous = store.tasks()[task.id];
+      const tasks = { ...store.tasks(), [task.id]: task };
+      if (awardedLevel) patchState(store, { earnedGardenLevel: awardedLevel });
+      if (previous && previous.status !== 'completed' && task.status === 'completed') {
+        const completion: CompletionReceipt = { taskId: task.id, earnedWater: earnedWater === true, gardenLevel: awardedLevel };
+        // The response is confirmed. Let motion capture the visible row before the view changes.
+        completed.next(completion);
+        patchState(store, { tasks, notice: 'Ayos! One task down.', undoTask: previous, completion });
+      } else {
+        patchState(store, { tasks });
+      }
+    }
+
+    function write<T>(request: Observable<T>, message: string, apply: (value: T) => void): Promise<boolean> {
+      if (!store.canWrite()) return Promise.resolve(false);
+      clearTimeout(noticeTimer);
+      patchState(store, { saving: true, notice: '', completion: null });
+      return new Promise((resolve) => {
+        request.pipe(takeUntilDestroyed(destroyRef)).subscribe({
+          next: (value) => {
+            patchState(store, { saving: false, notice: message, undoTask: null });
+            apply(value);
+            clearTimeout(noticeTimer);
+            noticeTimer = zone.runOutsideAngular(() => setTimeout(() => patchState(store, { notice: '', undoTask: null, completion: null }), 12000));
+            resolve(true);
+          },
+          error: () => {
+            patchState(store, { saving: false, error: 'Could not confirm the change. Reload tasks before trying again.' });
+            resolve(false);
+          },
+          complete: () => resolve(false),
+        });
       });
-    }),
+    }
 
-    stats: computed(() => {
-      const list = columns();
-      const doneColumn = list.at(-1);
-      const doneIds = new Set(doneColumn?.cardIds ?? []);
-      const today = logic.todayISO();
-      const all = Object.values(cards());
-      return {
-        total: all.length,
-        done: doneIds.size,
-        overdue: all.filter((card) => !doneIds.has(card.id) && logic.isOverdue(card, today)).length,
-      };
-    }),
+    function nextOrder(status: TaskStatus): string {
+      return rankBetween(store.columns()[status].at(-1)?.order ?? null, null);
+    }
 
-    /** Id of the last column — cards there count as done and are never shown as overdue. */
-    doneColumnId: computed(() => columns().at(-1)?.id ?? null),
-  })),
-
-  withMethods((store) => ({
-    addCard(columnId: string, input: CardInput): void {
-      patchState(store, (state) => logic.addCard(state, columnId, input));
-    },
-    updateCard(cardId: string, changes: Partial<CardInput>): void {
-      patchState(store, (state) => logic.updateCard(state, cardId, changes));
-    },
-    removeCard(cardId: string): void {
-      patchState(store, (state) => logic.removeCard(state, cardId));
-    },
-    moveCard(fromColumnId: string, toColumnId: string, fromIndex: number, toIndex: number): void {
-      patchState(store, (state) => logic.moveCard(state, fromColumnId, toColumnId, fromIndex, toIndex));
-    },
-    moveCardToColumn(cardId: string, toColumnId: string): void {
-      patchState(store, (state) => logic.moveCardToColumn(state, cardId, toColumnId));
-    },
-    addColumn(title: string): void {
-      patchState(store, (state) => logic.addColumn(state, title));
-    },
-    renameColumn(columnId: string, title: string): void {
-      patchState(store, (state) => logic.renameColumn(state, columnId, title));
-    },
-    removeColumn(columnId: string): void {
-      patchState(store, (state) => logic.removeColumn(state, columnId));
-    },
-    setQuery(query: string): void {
-      patchState(store, (state) => ({ filter: { ...state.filter, query } }));
-    },
-    setPriority(priority: Priority | 'all'): void {
-      patchState(store, (state) => ({ filter: { ...state.filter, priority } }));
-    },
-    clearFilter(): void {
-      patchState(store, { filter: initialState.filter });
-    },
-    resetDemo(): void {
-      patchState(store, logic.createDemoBoard(), { filter: initialState.filter });
-    },
-  })),
-
+    return {
+      completionEvents: () => completed.asObservable(),
+      clearGardenMilestone(): void { patchState(store, { earnedGardenLevel: null }); },
+      undo(): Promise<boolean> {
+        const previous = store.undoTask();
+        if (!previous || store.tasks()[previous.id]?.status !== 'completed') return Promise.resolve(false);
+        return write(api.update(previous.id, { status: previous.status, order: previous.order,
+          updatedAt: new Date().toISOString() }), 'Previous stage restored.', updateTask);
+      },
+      load(): void {
+        if (store.loading() || store.saving()) return;
+        patchState(store, { loading: true, notice: '', completion: null });
+        api.list().pipe(takeUntilDestroyed(destroyRef)).subscribe({
+          next: (tasks) => patchState(store, {
+            tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
+            undoTask: tasks.some(task => task.id === store.undoTask()?.id && task.status === 'completed') ? store.undoTask() : null,
+            loaded: true,
+            loading: false,
+            error: '',
+          }),
+          error: () => patchState(store, { loading: false, error: 'Could not load tasks. Check that the task server is running, then try again.' }),
+        });
+      },
+      setToday(): void {
+        patchState(store, { today: todayISO() });
+      },
+      setFilter(filter: Partial<BoardFilter>): void {
+        patchState(store, { filter: { ...store.filter(), ...filter } });
+      },
+      clearFilter(): void {
+        patchState(store, { filter: emptyFilter });
+      },
+      save(id: string, input: TaskInput, isEdit: boolean): Promise<boolean> {
+        if (!store.canWrite()) return Promise.resolve(false);
+        const task = store.tasks()[id];
+        if (isEdit && !task) return Promise.resolve(false);
+        const updatedAt = new Date().toISOString();
+        // A reloaded POST may already exist when its response was lost. Reuse the draft ID.
+        if (task) {
+          const order = input.status === task.status ? task.order : nextOrder(input.status);
+          return write(api.update(id, { ...input, order, updatedAt }), 'Task saved.', updateTask);
+        }
+        return write(api.create({ ...input, id, order: nextOrder(input.status), createdAt: updatedAt, updatedAt }), 'Task created.', updateTask);
+      },
+      remove(id: string): Promise<boolean> {
+        if (!store.tasks()[id]) return Promise.resolve(false);
+        return write(api.delete(id), 'Task deleted.', () => {
+          const tasks = { ...store.tasks() };
+          delete tasks[id];
+          patchState(store, { tasks });
+        });
+      },
+      move(id: string, status: TaskStatus, index?: number): Promise<boolean> {
+        if (!store.canWrite() || (index !== undefined && store.isFiltering())) return Promise.resolve(false);
+        const task = store.tasks()[id];
+        if (!task || (index === undefined && task.status === status)) return Promise.resolve(false);
+        const order = moveRank(store.columns()[status], task, status, index);
+        if (order === null) return Promise.resolve(false);
+        return write(
+          api.update(id, { status, order, updatedAt: new Date().toISOString() }),
+          task.status === status ? 'Task order saved.' : `Task moved to ${STATUS_LABELS[status]}.`,
+          updateTask,
+        );
+      },
+    };
+  }),
   withHooks({
     onInit(store) {
-      patchState(store, loadBoard() ?? logic.createDemoBoard());
-
-      // onInit runs in an injection context, so effect() is allowed here.
-      // It re-runs whenever columns or cards change; the filter is not saved on purpose.
-      effect(() => saveBoard({ columns: store.columns(), cards: store.cards() }));
+      store.setToday();
+      store.load();
+      const timer = inject(NgZone).runOutsideAngular(() => setInterval(() => store.setToday(), 30_000));
+      inject(DestroyRef).onDestroy(() => clearInterval(timer));
     },
   }),
 );

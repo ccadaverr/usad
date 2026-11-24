@@ -1,75 +1,100 @@
-<form
-  [formGroup]="form"
-  (ngSubmit)="save()"
-  novalidate
-  class="flex max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] flex-col rounded-2xl bg-white shadow-xl"
-  aria-labelledby="card-dialog-title"
->
-  <header class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-    <h2 id="card-dialog-title" class="text-lg font-semibold">{{ isEdit ? 'Edit task' : 'New task' }}</h2>
-    <button type="button" (click)="cancel()" class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
-      ✕
+<form #formElement class="task-dialog" [class.task-composer]="!data.task" [formGroup]="form" (ngSubmit)="save()" novalidate>
+  <header class="dialog-heading">
+    <div>
+      <h2 id="task-dialog-title">{{ data.task ? 'Edit task' : 'Add a task' }}</h2>
+      <p>{{ data.task ? 'Review or update this assignment.' : "What's on your list?" }}</p>
+    </div>
+    <button type="button" class="button icon-button" aria-label="Close task details" [disabled]="store.saving()" (click)="dismiss(ref)">
+      <app-icon name="close" />
     </button>
   </header>
 
-  <div class="space-y-4 overflow-y-auto px-6 py-5">
-    <label class="block">
-      <span class="field-label">Title</span>
-      <input formControlName="title" class="field" placeholder="What needs to be done?" />
-      @if (form.controls.title.touched && form.controls.title.hasError('required')) {
-        <span class="mt-1 block text-sm text-rose-600">Title is required</span>
-      }
-    </label>
-
-    <label class="block">
-      <span class="field-label">Description</span>
-      <textarea formControlName="description" rows="3" class="field resize-y" placeholder="Add more detail (optional)"></textarea>
-    </label>
-
-    <fieldset>
-      <legend class="field-label">Priority</legend>
-      <div class="flex gap-2">
-        @for (p of priorities; track p) {
-          <label
-            class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition
-              has-[:checked]:border-indigo-600 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 border-slate-200 hover:border-slate-300"
-          >
-            <input type="radio" formControlName="priority" [value]="p" class="sr-only" />
-            <span class="size-2.5 rounded-full" [class]="priorityClasses[p]"></span>
-            {{ priorityLabels[p] }}
-          </label>
-        }
+  <div class="dialog-body">
+    <p class="sr-only" role="status">{{ store.saving() ? 'Saving changes…' : '' }}</p>
+    @if (store.error()) {
+      <div class="notice notice-error">
+        <div role="alert">{{ store.error() }}</div>
+        <button type="button" class="button button-secondary" [disabled]="store.loading()" (click)="store.load()">
+          {{ store.loading() ? 'Reloading…' : 'Reload tasks' }}
+        </button>
       </div>
-    </fieldset>
+    }
+    @if (data.task && !store.tasks()[id] && !store.error()) {
+      <p class="notice notice-error" role="alert">This task is no longer on the board.</p>
+    }
 
-    <div class="grid gap-4 sm:grid-cols-2">
-      <label class="block">
-        <span class="field-label">Due date</span>
-        <input type="date" formControlName="dueDate" class="field" />
-      </label>
+    <fieldset class="dialog-fields" [disabled]="store.saving()">
+      @let title = form.controls.title;
+      @let subject = form.controls.subject;
+      @let due = form.controls.dueDate;
 
-      <label class="block">
-        <span class="field-label">Status</span>
-        <select formControlName="columnId" class="field">
-          @for (column of data.columns; track column.id) {
-            <option [value]="column.id">{{ column.title }}</option>
+      <div class="form-field">
+        <label for="task-title">Task name <span aria-hidden="true">*</span></label>
+        <input id="task-title" class="field" formControlName="title" placeholder="e.g. Draft the lab report" maxlength="120" required
+          [attr.aria-invalid]="title.touched && title.invalid" [attr.aria-describedby]="title.touched && title.invalid ? 'title-error' : null" />
+        @if (title.touched && title.invalid) { <p class="field-error" id="title-error">Enter a title of up to 120 characters.</p> }
+      </div>
+
+      <div class="form-field">
+        <label for="task-subject">Subject <span aria-hidden="true">*</span></label>
+        <input id="task-subject" class="field" formControlName="subject" list="saved-subjects" placeholder="e.g. Environmental Science" maxlength="60" required
+          [attr.aria-invalid]="subject.touched && subject.invalid" [attr.aria-describedby]="subject.touched && subject.invalid ? 'subject-error' : null" />
+        <datalist id="saved-subjects">
+          @for (item of store.subjects(); track item) { <option [value]="item"></option> }
+        </datalist>
+        @if (subject.touched && subject.invalid) { <p class="field-error" id="subject-error">Enter a subject of up to 60 characters.</p> }
+      </div>
+
+      <div class="form-field">
+        <label for="task-deadline">Due date <span>(optional)</span></label>
+        <div class="date-shortcuts" role="group" aria-label="Quick dates">
+          <button class="button button-secondary" type="button" [attr.aria-pressed]="due.value === store.today()" (click)="chooseDate(0)">Today</button>
+          <button class="button button-secondary" type="button" [attr.aria-pressed]="due.value === tomorrow()" (click)="chooseDate(1)">Tomorrow</button>
+          <button class="button button-plain" type="button" (click)="pickDate(dateInput)">Pick a date</button>
+        </div>
+        <input id="task-deadline" #dateInput class="field" type="date" formControlName="dueDate" min="0001-01-01" max="9999-12-31"
+          [attr.aria-invalid]="due.touched && due.invalid" [attr.aria-describedby]="due.touched && due.invalid ? 'date-error' : null" />
+        @if (data.task && due.value && due.valid) {
+          <app-deadline [task]="{ dueDate: due.value, status: form.controls.status.value }" />
+        }
+        @if (due.touched && due.invalid) { <p class="field-error" id="date-error">Enter a valid calendar date.</p> }
+      </div>
+
+      <fieldset class="form-field priority-options">
+        <legend>Priority</legend>
+        <div class="priority-picker">
+          @for (priority of priorities; track priority) {
+            <label><input type="radio" formControlName="priority" [value]="priority" /><span>{{ priorityLabels[priority] }}</span></label>
           }
-        </select>
-      </label>
-    </div>
+        </div>
+      </fieldset>
+      @if (data.task) {
+        <div class="form-field">
+          <label for="task-status">Status</label>
+          <select id="task-status" class="field" formControlName="status">
+            @for (status of statuses; track status) { <option [value]="status">{{ statusLabels[status] }}</option> }
+          </select>
+        </div>
+      }
 
-    <label class="block">
-      <span class="field-label">Labels</span>
-      <input formControlName="labels" class="field" placeholder="bug, frontend" />
-      <span class="mt-1 block text-xs text-slate-500">Separate with commas · up to 5</span>
-    </label>
+      <details class="composer-details" [open]="!!data.task?.description">
+        <summary>More details <span>(optional)</span></summary>
+        <div class="form-field">
+          <label for="task-description">Description</label>
+          <textarea id="task-description" class="field" formControlName="description" rows="3" maxlength="1000"
+            placeholder="Add notes or the next step"></textarea>
+        </div>
+      </details>
+    </fieldset>
   </div>
 
-  <footer class="flex items-center gap-2 border-t border-slate-200 px-6 py-4">
-    @if (isEdit) {
-      <button type="button" class="btn-ghost-danger mr-auto" (click)="remove()">Delete</button>
+  <footer class="dialog-footer">
+    @if (data.task && store.tasks()[id]) {
+      <button class="button button-plain danger-text" type="button" [disabled]="!store.canWrite()" (click)="dismiss(ref, 'deleted')">Delete task</button>
     }
-    <button type="button" class="btn-secondary ml-auto" (click)="cancel()">Cancel</button>
-    <button type="submit" class="btn-primary">{{ isEdit ? 'Save' : 'Add task' }}</button>
+    <button class="button button-secondary dialog-cancel" type="button" [disabled]="store.saving()" (click)="dismiss(ref)">Cancel</button>
+    <button class="button button-primary" type="submit" [disabled]="!store.canWrite() || (!!data.task && !store.tasks()[id])">
+      {{ store.saving() ? 'Saving…' : data.task ? 'Save changes' : 'Create task' }}
+    </button>
   </footer>
 </form>

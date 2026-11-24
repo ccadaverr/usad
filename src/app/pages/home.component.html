@@ -1,0 +1,39 @@
+@let stats = store.stats();
+@let next = nextTask();
+
+<div class="page-intro home-intro">
+  <p class="today-date"><app-icon name="calendar" /> {{ date(store.today()) | date:'EEEE, MMMM d' }}</p>
+  <h1 lang="fil">Kumusta!</h1>
+  <p lang="fil">Munting hakbang. Tunay na pag-usad.</p>
+</div>
+
+<a class="home-progress" routerLink="/progress">
+  <span class="summary-total"><strong>{{ stats.percent }}%</strong> · {{ stats.done }} of {{ stats.total }} complete</span>
+  <app-icon name="arrow" />
+  <progress class="progress-meter" [value]="stats.done" [max]="stats.total || 1" aria-label="Task completion"></progress>
+</a>
+
+<div class="home-flow">
+  <section class="home-priority" [attr.data-bloom-row]="next?.id ?? null" aria-labelledby="focus-title">
+    @if (next) {
+      <p class="eyebrow">Next priority</p>
+      <h2 id="focus-title">{{ next.title }}</h2>
+      <p class="muted">{{ next.subject }} · <app-deadline [task]="next" /></p>
+      <div class="priority-actions">
+        <app-task-actions [task]="next" [labelVisible]="true" />
+        <button class="button button-plain" type="button" (click)="dialogs.openTask(next)">View details</button>
+      </div>
+    } @else {
+      <h2 id="focus-title">{{ stats.total ? 'You’re caught up' : 'Magsimula sa isang gawain' }}</h2>
+      <p class="muted">{{ stats.total ? 'Every task on your board is complete.' : 'Add a task to plan your next step.' }}</p>
+    }
+  </section>
+
+  <section class="home-agenda home-upcoming" aria-labelledby="agenda-heading">
+    <div class="agenda-heading">
+      <h2 id="agenda-heading">Agenda</h2>
+      <a class="text-link" routerLink="/deadlines" aria-label="See all deadlines">See all <app-icon name="arrow" /></a>
+    </div>
+    <app-task-list [tasks]="agenda()" emptyText="No open deadlines." />
+  </section>
+</div>

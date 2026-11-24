@@ -1,162 +1,102 @@
-import { BoardFilter, BoardState, Card, CardInput, Column } from './board.models';
-
-// Pure functions: they take a state and return a NEW state, never mutating the input.
-// No Angular here, so they are trivial to unit test (see board.logic.spec.ts).
+import { generateKeyBetween } from 'fractional-indexing';
+import { BoardFilter, Task, TaskStatus } from './board.models';
 
 export function createId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return globalThis.crypto?.randomUUID?.() ??
+    Array.from(globalThis.crypto.getRandomValues(new Uint32Array(4)), (value) => value.toString(16).padStart(8, '0')).join('');
 }
 
-/** Today in local time as 'yyyy-MM-dd'. toISOString() would give the UTC date, which is wrong after 5pm in Vietnam. */
 export function todayISO(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${String(now.getFullYear()).padStart(4, '0')}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** 'yyyy-MM-dd' strings compare correctly as plain strings. */
-export function isOverdue(card: Card, today: string): boolean {
-  return card.dueDate !== null && card.dueDate < today;
+// Parse into local calendar time for display without shifting the date through UTC.
+export function localDate(value: string): Date {
+  return new Date(`${value}T00:00:00`);
 }
 
-export function normalize(value: string): string {
-  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+export function isValidDeadline(value: string): boolean {
+  if (value === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return false;
+  const date = localDate(value);
+  return !Number.isNaN(date.getTime()) && todayISO(date) === value;
 }
 
-export function matchesFilter(card: Card, filter: BoardFilter): boolean {
-  if (filter.priority !== 'all' && card.priority !== filter.priority) return false;
+export function isOverdue(task: Task, today: string): boolean {
+  return task.status !== 'completed' && task.dueDate !== null && task.dueDate < today;
+}
+
+function normalize(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+}
+
+export function matchesFilter(task: Task, filter: BoardFilter): boolean {
+  if (filter.priority !== 'all' && task.priority !== filter.priority) return false;
+  if (filter.subject && normalize(task.subject) !== normalize(filter.subject)) return false;
   const query = normalize(filter.query);
-  if (!query) return true;
-  return (
-    normalize(card.title).includes(query) ||
-    normalize(card.description).includes(query) ||
-    card.labels.some((label) => normalize(label).includes(query))
-  );
+  return [task.title, task.description, task.subject].some((value) => normalize(value).includes(query));
 }
 
-/** "bug, UI ,bug" → ['bug', 'UI'] — trimmed, de-duplicated (case-insensitive), max 5 labels of 20 chars. */
-export function parseLabels(text: string): string[] {
-  const seen = new Set<string>();
-  const labels: string[] = [];
-  for (const raw of text.split(',')) {
-    const label = raw.trim().slice(0, 20);
-    const key = label.toLowerCase();
-    if (label && !seen.has(key)) {
-      seen.add(key);
-      labels.push(label);
-    }
+export function distinctSubjects(tasks: Task[]): string[] {
+  const subjects = new Map<string, string>();
+  for (const { subject } of tasks) {
+    const key = normalize(subject);
+    if (!subjects.has(key)) subjects.set(key, subject);
   }
-  return labels.slice(0, 5);
+  return [...subjects.values()].sort((a, b) => a.localeCompare(b));
 }
 
-function updateColumn(state: BoardState, columnId: string, update: (column: Column) => Column): Column[] {
-  return state.columns.map((column) => (column.id === columnId ? update(column) : column));
+function compareKey(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
-export function addCard(state: BoardState, columnId: string, input: CardInput, id = createId()): BoardState {
-  const card: Card = { ...input, id, createdAt: Date.now() };
-  return {
-    cards: { ...state.cards, [id]: card },
-    columns: updateColumn(state, columnId, (column) => ({ ...column, cardIds: [...column.cardIds, id] })),
+export function orderTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => compareKey(a.order, b.order) || compareKey(a.id, b.id));
+}
+
+/** Use a distinct suffix so concurrent appends or drops can share an interval safely. */
+export function rankBetween(before: string | null, after: string | null): string {
+  let key = generateKeyBetween(before, after);
+  // If the generated key is a prefix of the upper bound, leave room for the suffix below it.
+  while (after?.startsWith(key)) key += '0';
+  const suffix = Array.from(crypto.getRandomValues(new Uint32Array(2)), (value) =>
+    value.toString(36).padStart(7, '0'),
+  ).join('');
+  return key + suffix + 'V';
+}
+
+/** A new rank only changes the moved record, so there is no partial multi-request reorder. */
+export function moveRank(tasks: Task[], task: Task, status: TaskStatus, index?: number): string | null {
+  const siblings = tasks.filter(({ id }) => id !== task.id);
+  const position = Math.max(0, Math.min(index ?? siblings.length, siblings.length));
+  if (status === task.status && tasks[position]?.id === task.id) return null;
+  return rankBetween(siblings[position - 1]?.order ?? null, siblings[position]?.order ?? null);
+}
+
+export function groupDeadlines(tasks: Task[], today: string) {
+  const groups: Record<'overdue' | 'today' | 'upcoming' | 'undated', Task[]> = {
+    overdue: [],
+    today: [],
+    upcoming: [],
+    undated: [],
   };
+  const open = tasks.filter((task) => task.status !== 'completed')
+    .sort((a, b) => compareKey(a.dueDate ?? '', b.dueDate ?? '') || compareKey(a.id, b.id));
+  for (const task of open) {
+    if (!task.dueDate) groups.undated.push(task);
+    else if (isOverdue(task, today)) groups.overdue.push(task);
+    else if (task.dueDate === today) groups.today.push(task);
+    else groups.upcoming.push(task);
+  }
+  return groups;
 }
 
-export function updateCard(state: BoardState, cardId: string, changes: Partial<CardInput>): BoardState {
-  const card = state.cards[cardId];
-  if (!card) return state;
-  return { ...state, cards: { ...state.cards, [cardId]: { ...card, ...changes } } };
-}
-
-export function removeCard(state: BoardState, cardId: string): BoardState {
-  // Destructuring with a rest object = "copy everything except this key"
-  const { [cardId]: _removed, ...cards } = state.cards;
-  return {
-    cards,
-    columns: state.columns.map((column) =>
-      column.cardIds.includes(cardId)
-        ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
-        : column,
-    ),
-  };
-}
-
-/** Moves a card between (or within) columns. Indexes are positions inside each column. */
-export function moveCard(
-  state: BoardState,
-  fromColumnId: string,
-  toColumnId: string,
-  fromIndex: number,
-  toIndex: number,
-): BoardState {
-  const from = state.columns.find((c) => c.id === fromColumnId);
-  const to = state.columns.find((c) => c.id === toColumnId);
-  if (!from || !to) return state;
-
-  const cardId = from.cardIds[fromIndex];
-  if (cardId === undefined) return state;
-
-  const fromIds = from.cardIds.filter((_, i) => i !== fromIndex);
-  const toIds = fromColumnId === toColumnId ? fromIds : [...to.cardIds];
-  const clamped = Math.max(0, Math.min(toIndex, toIds.length));
-  toIds.splice(clamped, 0, cardId); // safe: toIds is our own copy
-
-  return {
-    ...state,
-    columns: state.columns.map((column) => {
-      if (column.id === toColumnId) return { ...column, cardIds: toIds };
-      if (column.id === fromColumnId) return { ...column, cardIds: fromIds };
-      return column;
-    }),
-  };
-}
-
-/** Moves a card to the end of another column (used by the "Status" select in the edit dialog). */
-export function moveCardToColumn(state: BoardState, cardId: string, toColumnId: string): BoardState {
-  const from = state.columns.find((c) => c.cardIds.includes(cardId));
-  const to = state.columns.find((c) => c.id === toColumnId);
-  if (!from || !to || from.id === to.id) return state;
-  return moveCard(state, from.id, to.id, from.cardIds.indexOf(cardId), to.cardIds.length);
-}
-
-export function addColumn(state: BoardState, title: string, id = createId()): BoardState {
-  return { ...state, columns: [...state.columns, { id, title, cardIds: [] }] };
-}
-
-export function renameColumn(state: BoardState, columnId: string, title: string): BoardState {
-  return { ...state, columns: updateColumn(state, columnId, (column) => ({ ...column, title })) };
-}
-
-/** Removes a column together with its cards. */
-export function removeColumn(state: BoardState, columnId: string): BoardState {
-  const column = state.columns.find((c) => c.id === columnId);
-  if (!column) return state;
-  const cards = { ...state.cards };
-  for (const id of column.cardIds) delete cards[id];
-  return { cards, columns: state.columns.filter((c) => c.id !== columnId) };
-}
-
-export function createDemoBoard(today = new Date()): BoardState {
-  const day = (offset: number) => todayISO(new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset));
-
-  let state: BoardState = {
-    columns: [
-      { id: 'todo', title: 'To do', cardIds: [] },
-      { id: 'doing', title: 'In progress', cardIds: [] },
-      { id: 'review', title: 'Review', cardIds: [] },
-      { id: 'done', title: 'Done', cardIds: [] },
-    ],
-    cards: {},
-  };
-
-  const demo: Array<[string, CardInput]> = [
-    ['todo', { title: 'Design the pricing page', description: 'Three tiers, monthly/yearly toggle.', priority: 'medium', labels: ['design'], dueDate: day(5) }],
-    ['todo', { title: 'Write onboarding emails', description: '', priority: 'low', labels: ['marketing'], dueDate: null }],
-    ['todo', { title: 'Fix login redirect on refresh', description: 'Users land on the dashboard instead of the page they opened.', priority: 'high', labels: ['bug', 'frontend'], dueDate: day(-1) }],
-    ['doing', { title: 'Build the settings screen', description: 'Profile, password, notifications.', priority: 'medium', labels: ['frontend'], dueDate: day(2) }],
-    ['doing', { title: 'Set up error monitoring', description: '', priority: 'high', labels: ['devops'], dueDate: day(1) }],
-    ['review', { title: 'Add dark mode', description: 'Follow the OS setting by default.', priority: 'low', labels: ['frontend', 'design'], dueDate: null }],
-    ['done', { title: 'Create the project repo', description: '', priority: 'medium', labels: ['devops'], dueDate: day(-3) }],
-    ['done', { title: 'Choose the UI library', description: 'Went with Tailwind CSS.', priority: 'low', labels: ['frontend'], dueDate: null }],
-  ];
-  for (const [columnId, input] of demo) state = addCard(state, columnId, input);
-  return state;
+export function deadlineContext(task: Pick<Task, 'dueDate' | 'status'>, today: string) {
+  if (!task.dueDate) return { tone: 'neutral', label: 'No due date' };
+  if (task.status === 'completed') return { tone: 'neutral', label: 'Due' };
+  if (task.dueDate < today) return { tone: 'overdue', label: 'Overdue' };
+  if (task.dueDate === today) return { tone: 'today', label: 'Due today' };
+  if (Date.parse(task.dueDate) - Date.parse(today) <= 7 * 86_400_000) return { tone: 'soon', label: 'Due soon' };
+  return { tone: 'neutral', label: 'Due' };
 }

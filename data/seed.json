@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    { "id": "field-notes", "title": "Annotate the watershed field notes", "subject": "Environmental Science", "description": "Label the sampling sites and add a short note on water clarity at each stop.", "priority": "high", "status": "pending", "dueInDays": -2, "order": "a0" },
+    { "id": "journal-response", "title": "Draft the literature response", "subject": "Academic Writing", "description": "Compare the two authors’ main claims and bring one quotation to the seminar.", "priority": "medium", "status": "pending", "dueInDays": 0, "order": "a1" },
+    { "id": "statistics", "title": "Check the survey sample", "subject": "Applied Statistics", "description": "Review the missing responses and document how the sample was cleaned.", "priority": "medium", "status": "pending", "dueInDays": 4, "order": "a2" },
+    { "id": "archive", "title": "Choose a source for the oral history", "subject": "Philippine History", "description": "Browse the university archive and list two possible primary sources.", "priority": "low", "status": "pending", "dueInDays": null, "order": "a3" },
+    { "id": "angular-board", "title": "Test touch drag on the task board", "subject": "Web Development", "description": "Move a task between stages on a narrow screen and check that it stays moved after refresh.", "priority": "high", "status": "in-progress", "dueInDays": 0, "order": "a0" },
+    { "id": "soil-report", "title": "Finish the soil sampling report", "subject": "Environmental Science", "description": "Add a results table and explain the difference between the two sampling sites.", "priority": "high", "status": "in-progress", "dueInDays": 2, "order": "a1" },
+    { "id": "proposal", "title": "Submit the research proposal", "subject": "Research Methods", "description": "Submit the research question, scope, and initial bibliography.", "priority": "high", "status": "completed", "dueInDays": -4, "order": "a0" },
+    { "id": "data-dictionary", "title": "Prepare the data dictionary", "subject": "Applied Statistics", "description": "Add variable definitions, units, and codes for missing data.", "priority": "medium", "status": "completed", "dueInDays": -1, "order": "a1" }
+  ]
+}

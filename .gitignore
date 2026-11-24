@@ -26,3 +26,9 @@ Thumbs.db
 # Logs
 npm-debug.log
 yarn-error.log
+
+# Local task database
+/data/db.json
+
+# Local browser verification output
+/.playwright-mcp/

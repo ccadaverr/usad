@@ -1,0 +1,70 @@
+<a class="text-link garden-back" routerLink="/progress"><span aria-hidden="true">←</span> Back to Progress</a>
+<div class="page-intro garden-intro">
+  <h1>Munting Tanim</h1>
+  <p>Each assignment you complete for the first time helps your plant grow.</p>
+</div>
+
+<section class="garden-layout" aria-label="Your garden">
+  <figure class="plant-art" [class.just-watered]="watered()">
+    <canvas #canvas [class.plant-ready]="ready()" [attr.tabindex]="ready() ? 0 : -1"
+      [attr.aria-hidden]="!ready()" aria-label="Botanical specimen. Drag horizontally or use the left and right arrow keys to turn it."
+      (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="release()"
+      (pointercancel)="release()" (lostpointercapture)="release()" (keydown)="rotate($event)"></canvas>
+    @if (!ready()) {
+      <svg class="plant-fallback" viewBox="0 0 240 244" role="img" [attr.aria-label]="state() ? stage() + ' in a terracotta pot' : 'Botanical illustration'">
+        <ellipse cx="120" cy="221" rx="67" ry="9" fill="#d7d0ba" />
+        <path d="M83 169Q120 156 157 169L147 216Q120 230 93 216Z" fill="#a35842" />
+        <path d="M90 179Q105 181 108 218Q98 219 94 213Z" fill="#c58262" opacity=".65" />
+        <path d="M79 167Q120 154 161 167L159 178Q120 189 81 178Z" fill="#be7c5c" />
+        <ellipse cx="120" cy="167" rx="40" ry="9" fill="#72503d" />
+        <ellipse cx="120" cy="167" rx="34" ry="6" fill="#4d4835" />
+        @for (layer of layers(); track layer) {
+          <g [attr.transform]="'translate(120,' + (165 - layer * 13) + ')'">
+            <path d="M0 8Q4 1 0 -11" fill="none" stroke="#47644a" stroke-width="2.5" />
+            <g [attr.transform]="layer % 2 ? 'scale(-1 1)' : null">
+              <path [attr.d]="layer > 4 ? 'M0 0Q16 -26 54 -20Q35 7 0 0Z' : 'M0 0Q12 -22 39 -16Q26 5 0 0Z'" [attr.fill]="layer % 2 ? '#608064' : '#375f4b'" />
+              <path [attr.d]="layer > 4 ? 'M0 0Q26 -9 50 -19' : 'M0 0Q16 -6 36 -15'" fill="none" stroke="#bcc19a" stroke-width=".65" />
+              @if (layer > 4) { <path d="M0 3Q-12 -16 -37 -14Q-24 7 0 3Z" fill="#789481" /> }
+            </g>
+          </g>
+        }
+        @if (level() > 8) {
+          <path d="M120 61Q118 47 123 30" stroke="#47644a" stroke-width="2" fill="none" />
+          <path d="M123 33Q106 32 111 21Q117 14 123 25Q125 12 134 17Q143 26 126 33Z" fill="#d0a182" />
+          @if (level() === 10) { <circle cx="123" cy="27" r="4" fill="#a67a46" /> }
+        }
+      </svg>
+    }
+    @if (watered()) { <span class="watering-mark" aria-hidden="true"></span> }
+  </figure>
+
+  <div class="garden-record">
+    @if (state(); as garden) {
+      <p class="eyebrow">Level {{ garden.level }} of 10</p>
+      <h2>{{ stage() }}</h2>
+      <p>{{ garden.lifetime }} lifetime {{ garden.lifetime === 1 ? 'completion' : 'completions' }}</p>
+      @if (remaining()) {
+        <progress class="progress-meter" [value]="garden.lifetime % 5" max="5" aria-label="First-time completions toward next level"></progress>
+        <p class="muted">{{ remaining() }} {{ remaining() === 1 ? 'task' : 'tasks' }} to level {{ garden.level + 1 }}</p>
+      } @else { <p class="muted">Your plant has reached full growth.</p> }
+      <div class="garden-water">
+        <div><strong>{{ garden.available }} {{ garden.available === 1 ? 'water drop' : 'water drops' }}</strong>
+          @if (!garden.available) { <p class="muted">Complete a task for the first time to earn a drop.</p> }
+        </div>
+        @if (garden.available || pendingWater()) {
+          <button class="button button-primary" type="button" [disabled]="loading() || saving()"
+            (click)="water()">{{ saving() ? 'Saving…' : pendingWater() ? 'Retry watering' : 'Water plant' }}</button>
+        }
+      </div>
+      <p class="garden-feedback" role="status">{{ watered() ? 'Plant watered.' : '' }}</p>
+    } @else if (loading()) {
+      <p role="status">Loading your garden…</p>
+    }
+    @if (error()) {
+      <p class="error-text" role="alert">{{ error() }}</p>
+      @if (!pendingWater()) {
+        <button class="button button-secondary" type="button" [disabled]="loading()" (click)="load()">Retry garden</button>
+      }
+    }
+  </div>
+</section>

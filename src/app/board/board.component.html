@@ -1,0 +1,69 @@
+<div class="page-intro">
+  <h1>Task board</h1>
+  <p>Organize coursework and move it through each stage.</p>
+</div>
+
+<div class="board-toolbar">
+  <label class="search-field">
+    <span class="sr-only">Search tasks</span>
+    <app-icon name="search" />
+    <input class="field" type="search" placeholder="Search tasks" name="task-search"
+      [(ngModel)]="query" (ngModelChange)="store.setFilter({ query: $event })" />
+  </label>
+  <div class="board-filters">
+    <label>
+      <span class="sr-only">Filter by priority</span>
+      <select class="field" [ngModel]="store.filter().priority" (ngModelChange)="store.setFilter({ priority: $event })">
+        <option value="all">All priorities</option>
+        @for (priority of priorities; track priority) {
+          <option [value]="priority">{{ priorityLabels[priority] }} priority</option>
+        }
+      </select>
+    </label>
+    <label>
+      <span class="sr-only">Filter by subject</span>
+      <select class="field" [ngModel]="store.filter().subject" (ngModelChange)="store.setFilter({ subject: $event })">
+        <option value="">All subjects</option>
+        @if (store.filter().subject && !store.subjects().includes(store.filter().subject)) {
+          <option [value]="store.filter().subject">{{ store.filter().subject }}</option>
+        }
+        @for (subject of store.subjects(); track subject) {
+          <option [value]="subject">{{ subject }}</option>
+        }
+      </select>
+    </label>
+  </div>
+  <button class="button button-plain clear-filters" type="button" [class.filters-idle]="!store.isFiltering()"
+    [disabled]="!store.isFiltering()" [attr.aria-hidden]="!store.isFiltering()" (click)="clearFilters()">Clear filters</button>
+</div>
+
+<div class="board-view-controls">
+  @if (!fullBoard()) {
+    <div class="status-switcher" aria-label="Visible stage" role="group">
+      @for (stage of store.view(); track stage.id) {
+        <button type="button" [attr.aria-pressed]="selectedStatus() === stage.id"
+          [attr.aria-controls]="'stage-' + stage.id" (click)="selectedStatus.set(stage.id)">
+          <span>{{ stage.title }}</span>
+          <span class="switcher-count">{{ stage.tasks.length }}</span>
+        </button>
+      }
+    </div>
+  }
+  <button class="button button-plain board-mode" type="button" [attr.aria-pressed]="fullBoard()"
+    (click)="fullBoard.set(!fullBoard())">
+    <app-icon [name]="fullBoard() ? 'list' : 'board'" />
+    {{ fullBoard() ? 'Focused view' : 'Full board' }}
+  </button>
+</div>
+<p class="board-hint board-hint-stable" aria-live="polite" [class.hint-idle]="!store.isFiltering() && !fullBoard()">
+  {{ store.isFiltering() ? 'Drag is paused while filtering. Use “Move to…” to change a task’s stage.' :
+    'Drag by the handle to reorder or move tasks. You can also use “Move to…”.' }}
+</p>
+
+<div class="drag-viewport" #dragBounds aria-hidden="true"></div>
+<div cdkDropListGroup class="board-grid" [class.focused-board]="!fullBoard()">
+  @for (column of store.view(); track column.id) {
+    <app-column [class.stage-selected]="selectedStatus() === column.id"
+      [column]="column" [dragBounds]="dragBounds" />
+  }
+</div>

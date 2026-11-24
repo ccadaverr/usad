@@ -36,6 +36,7 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": { "proxyConfig": "proxy.conf.json" },
           "configurations": {
             "production": { "buildTarget": "taskflow:build:production" },
             "development": { "buildTarget": "taskflow:build:development" }
@@ -53,5 +54,8 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }
