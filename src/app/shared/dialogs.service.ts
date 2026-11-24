@@ -1,7 +1,7 @@
 import { Overlay } from '@angular/cdk/overlay';
 import { Dialog } from '@angular/cdk/dialog';
 import { DOCUMENT } from '@angular/common';
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, Injector, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { CardDialogComponent, CardDialogData, CardDialogResult } from '../board/card-dialog.component';
 import { Task, TaskStatus } from '../board/board.models';
@@ -14,7 +14,12 @@ export class DialogsService {
   private readonly dialog = inject(Dialog);
   private readonly store = inject(BoardStore);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private open = false;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.dialog.closeAll());
+  }
 
   async openTask(task?: Task, status: TaskStatus = 'pending'): Promise<void> {
     if (this.open || (!task && !this.store.canWrite())) return;
@@ -36,6 +41,7 @@ export class DialogsService {
   private editTask(data: CardDialogData): Promise<CardDialogResult | undefined> {
     const ref = this.dialog.open<CardDialogResult, CardDialogData>(CardDialogComponent, {
       data,
+      injector: this.injector,
       ariaLabelledBy: 'task-dialog-title',
       ariaModal: true,
       autoFocus: matchMedia('(pointer: coarse)').matches ? 'first-header' : '#task-title',

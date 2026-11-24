@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="forest">
   <head>
     <meta charset="utf-8" />
     <title>USAD: A Web-Based Student Task Management and Progress Tracking System</title>
@@ -7,6 +7,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="description" content="USAD is a student workspace for coursework, deadlines, and progress." />
     <meta name="theme-color" content="#f1f0e8" />
+    <script>
+      // Apply the allowlisted preference before the app and its stylesheet render.
+      let mode;
+      try {
+        const savedTheme = localStorage.getItem('usad.appearance');
+        if (['forest', 'blue-hour', 'warm-clay'].includes(savedTheme)) document.documentElement.dataset.theme = savedTheme;
+        mode = localStorage.getItem('usad.appearance-mode');
+      } catch { /* Forest is the document default. */ }
+      document.documentElement.dataset.mode = mode === 'light' || mode === 'dark'
+        ? mode : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    </script>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   </head>
   <body>

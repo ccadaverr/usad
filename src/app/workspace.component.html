@@ -1,0 +1,93 @@
+@if (!preview) {
+  <a class="skip-link" href="#content" (click)="skipToContent($event)">Skip to content</a>
+}
+<header class="app-header">
+  <div class="header-inner">
+    <a class="wordmark" routerLink="/home"><span class="baybayin" aria-hidden="true" lang="tl-Tglg">ᜂᜐᜇ᜔</span>usad<span>.</span><span class="sr-only"> Home</span></a>
+    <span class="header-context">{{ pageTitle() }}</span>
+    <div class="workspace-header-actions">
+      @if (preview) {
+        <span class="btn button appearance-trigger"><app-icon name="appearance" /><span>Appearance</span></span>
+        <span class="btn button guest-menu-trigger"><app-icon name="guest" /><app-icon class="guest-menu-chevron" name="chevron" /></span>
+      } @else {
+        <app-appearance-control />
+        <app-guest-actions />
+      }
+      @if (store && pageTitle() !== 'Munting Tanim' && (store.stats().total || (pageTitle() !== 'Home' && pageTitle() !== 'Board'))) {
+        <div class="task-create-dock">
+          <button class="btn button button-primary create-task-fab" type="button"
+            [disabled]="!store.canWrite()" (click)="dialogs?.openTask()">
+            <span class="create-task-mark"><app-icon name="plus" /></span><span>New task</span>
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</header>
+<nav class="app-nav" aria-label="Main navigation">
+  <div class="nav-inner">
+    @for (link of links; track link.path) {
+      <a [routerLink]="link.path" [routerLinkActive]="preview ? '' : 'nav-active'" [class.nav-active]="preview && link.path === '/home'"
+        [routerLinkActiveOptions]="{ exact: true }" [attr.aria-label]="link.accessibleName ?? null" ariaCurrentWhenActive="page">
+        <span class="nav-icon"><app-icon [name]="link.icon" /></span>
+        <span>{{ link.name }}</span>
+      </a>
+    }
+  </div>
+  <p class="nav-tagline" lang="fil">Munting hakbang.<br />Tunay na pag-usad.</p>
+</nav>
+<main class="app-content" [attr.id]="preview ? null : 'content'" #content [attr.data-entry-main]="preview ? null : ''" tabindex="-1">
+  @if (preview) {
+    <app-home />
+  } @else if (store; as store) {
+    @let completion = store.completion();
+    <p class="sr-only" role="status">
+      {{ store.saving() ? 'Saving changes…' : store.notice() }}
+      @if (completion?.earnedWater) { +1 water drop earned. }
+      @if (completion?.gardenLevel; as level) { Munting Tanim reached level {{ level }}. }
+    </p>
+    @if (store.notice()) {
+      <div class="notice notice-success feedback" animate.leave="feedback-leave" [class.bloom-feedback]="!!completion">
+        @for (receipt of completion ? [completion] : []; track receipt) {
+          <app-usad-bloom [animate]="motion?.animateInToast() ?? false" />
+        } @empty {
+          <app-icon name="check" />
+        }
+        <div class="feedback-copy">
+          <span>{{ store.notice() }}</span>
+          @if (completion?.earnedWater) {
+            <span class="bloom-reward"><span class="reward-droplet" aria-hidden="true"><app-icon name="drop" /></span>+1 water drop earned</span>
+          }
+          @if (completion?.gardenLevel; as level) { <small>Munting Tanim reached level {{ level }}.</small> }
+        </div>
+        @if (store.undoTask()) { <button class="button" [disabled]="!store.canWrite()" (click)="store.undo()">Undo</button> }
+      </div>
+    }
+    @for (bloom of motion?.anchored() ?? []; track bloom.sequence) {
+      <div class="bloom-row-response" aria-hidden="true" [style.left.px]="bloom.row.left"
+        [style.top.px]="bloom.row.top" [style.width.px]="bloom.row.width" [style.height.px]="bloom.row.height"><span>{{ bloom.title }}</span></div>
+      <app-usad-bloom class="bloom-floating" [animate]="true" [style.left.px]="bloom.x"
+        [style.top.px]="bloom.y" (animationend)="motion?.finish($event, bloom.sequence)" />
+    }
+    @if (store.undoTask() && !store.notice() && store.canWrite()) {
+      <button class="button" (click)="store.undo()">Retry undo</button>
+    }
+    @if (store.error()) {
+      <div class="notice notice-error workspace-error">
+        <app-icon name="warning" />
+        <div role="alert">{{ store.error() }}</div>
+        <button class="button button-secondary" type="button" [disabled]="store.loading()" (click)="store.load()">
+          {{ store.loading() ? 'Reloading…' : 'Reload tasks' }}
+        </button>
+      </div>
+    }
+    @if (store.loaded() || (arrivingHome && pageTitle() === 'Home')) {
+      <router-outlet />
+      @if (!store.loaded() && store.loading()) {
+        <p class="sr-only" role="status">Loading your workspace…</p>
+      }
+    } @else if (store.loading()) {
+      <div class="state-panel" role="status">Loading your workspace…</div>
+    }
+  }
+</main>

@@ -8,11 +8,11 @@ const { promisify } = require('node:util');
 const { gardenView, reconcileGarden } = require('./garden.cjs');
 const { createApp } = require('./server.cjs');
 
-test('growth advances every five distinct completions and caps at ten', () => {
+test('growth advances every two distinct completions and caps at ten', () => {
   const tasks = Array.from({ length: 56 }, (_, id) => ({ id: String(id), status: 'completed' }));
   for (let count = 0; count <= tasks.length; count++) {
     const garden = reconcileGarden(undefined, tasks.slice(0, count));
-    assert.deepEqual(gardenView(garden), { lifetime: count, level: Math.min(10, 1 + Math.floor(count / 5)), available: count });
+    assert.deepEqual(gardenView(garden), { lifetime: count, level: Math.min(10, 1 + Math.floor(count / 2)), available: count });
     assert.deepEqual(reconcileGarden(garden, tasks.slice(0, count)), garden);
   }
 });
@@ -21,7 +21,7 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
   const directory = mkdtempSync(join(tmpdir(), 'usad-garden-test-'));
   const file = join(directory, 'db.json');
   const start = { tasks: [
-    ...Array.from({ length: 4 }, (_, id) => ({ id: String(id), status: 'completed' })),
+    ...Array.from({ length: 3 }, (_, id) => ({ id: String(id), status: 'completed' })),
     { id: 'pending', status: 'pending', order: 'a0' },
   ] };
   const snapshot = () => JSON.parse(readFileSync(file));
@@ -39,7 +39,7 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
     method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const read = async () => (await request('/garden')).json();
-  assert.deepEqual(await read(), { lifetime: 4, level: 1, available: 4 });
+  assert.deepEqual(await read(), { lifetime: 3, level: 2, available: 3 });
   assert.deepEqual(snapshot(), start, 'Migration has no read-side disk write');
 
   failWrite = true;
@@ -49,28 +49,28 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
   assert.equal(rejected.headers.get('X-USAD-Garden-Level'), null);
   assert.deepEqual(snapshot(), start);
   assert.equal((await (await request('/tasks/pending')).json()).status, 'pending');
-  assert.deepEqual(await read(), { lifetime: 4, level: 1, available: 4 });
+  assert.deepEqual(await read(), { lifetime: 3, level: 2, available: 3 });
 
   failWrite = false;
   const completed = await request('/tasks/pending', 'PATCH', { status: 'completed' });
-  assert.equal(completed.headers.get('X-USAD-Garden-Level'), '2');
+  assert.equal(completed.headers.get('X-USAD-Garden-Level'), '3');
   assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1');
   await request('/tasks/pending', 'PATCH', { status: 'pending', order: 'a0' });
   const repeated = await request('/tasks/pending', 'PATCH', { status: 'completed' });
   assert.equal(repeated.headers.get('X-USAD-Garden-Level'), null);
   assert.equal(repeated.headers.get('X-USAD-Water-Earned'), null);
   await request('/tasks/pending', 'DELETE');
-  assert.deepEqual(await read(), { lifetime: 5, level: 2, available: 5 });
+  assert.deepEqual(await read(), { lifetime: 4, level: 3, available: 4 });
 
   const id = 'water-operation-0001';
   failWrite = true;
   assert.equal((await request('/garden/water', 'POST', { id })).status, 503);
-  assert.equal((await read()).available, 5);
+  assert.equal((await read()).available, 4);
   failWrite = false;
   const attempts = await Promise.all([request('/garden/water', 'POST', { id }), request('/garden/water', 'POST', { id })]);
-  for (const attempt of attempts) assert.equal((await attempt.json()).available, 4);
+  for (const attempt of attempts) assert.equal((await attempt.json()).available, 3);
   assert.deepEqual(gardenView(reconcileGarden(snapshot().garden, snapshot().tasks)), {
-    lifetime: 5, level: 2, available: 4,
+    lifetime: 4, level: 3, available: 3,
   });
 });
 
@@ -104,16 +104,16 @@ test('the garden and watering routes restore existing history from disk after re
   const completed = await fetch(runtime.base + '/tasks/new', {
     method: 'PATCH', headers: json, body: JSON.stringify({ status: 'completed' }),
   });
-  assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1', 'Credits can be earned between levels');
-  assert.equal(completed.headers.get('X-USAD-Garden-Level'), null);
+  assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1', 'The second credit advances the level');
+  assert.equal(completed.headers.get('X-USAD-Garden-Level'), '2');
   const water = () => fetch(runtime.base + '/garden/water', {
     method: 'POST', headers: json, body: JSON.stringify({ id: 'water-after-restart-01' }),
   });
   assert.equal((await water()).status, 200);
   await stop(runtime.server);
   runtime = await start();
-  assert.deepEqual(await state(), { lifetime: 2, available: 1, level: 1 });
-  assert.deepEqual(await (await water()).json(), { lifetime: 2, available: 1, level: 1 });
+  assert.deepEqual(await state(), { lifetime: 2, available: 1, level: 2 });
+  assert.deepEqual(await (await water()).json(), { lifetime: 2, available: 1, level: 2 });
 });
 
 test('startup seeds a missing configured file and preserves existing database bytes', async context => {

@@ -1,0 +1,97 @@
+<div #frame class="entrance-frame tour-frame">
+  <app-entry-brand>
+    <button type="button" class="btn button tour-skip" [disabled]="busy()" (click)="finish()">
+      {{ busy() ? 'Saving…' : 'Explore now' }}<app-icon name="arrow" />
+    </button>
+  </app-entry-brand>
+  <main class="tour-layout" data-entry-main tabindex="-1">
+    <h1 class="sr-only">A short tour of USAD</h1>
+    <p class="sr-only" role="status" aria-live="polite">Step {{ index() + 1 }} of {{ slides.length }}. {{ slides[index()].title }}</p>
+
+    <div class="tour-viewport" [class.tour-dragging]="dragging()" [class.tour-entered]="moved()"
+      [style.--tour-shift]="offset() + 'px'" [style.--tour-ratio]="ratio()" [style.--tour-duration]="duration() + 'ms'"
+      (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)"
+      (pointercancel)="cancel($event)" (lostpointercapture)="cancel($event)">
+      @for (slide of slides; track slide.label; let i = $index) {
+        <section class="tour-slide" [class.tour-active]="i === index()" [inert]="i !== index()"
+          [attr.aria-hidden]="i !== index() ? 'true' : null" [style.--tour-position]="i - index()"
+          [attr.aria-labelledby]="'tour-title-' + i">
+          <div class="tour-copy">
+            <p class="tour-eyebrow">{{ slide.label }}</p>
+            <h2 [id]="'tour-title-' + i">{{ slide.title }}</h2>
+            <p class="tour-description">{{ slide.description }}</p>
+          </div>
+
+          <figure class="tour-art" aria-hidden="true" [attr.data-slide]="slide.label">
+            @switch (i) {
+              @case (0) {
+                <div class="tour-illustration tour-composer">
+                  <div class="preview-heading"><app-icon name="plus" /><strong>New task</strong></div>
+                  <div class="preview-field"><span>Title</span><strong>Annotate the field notes</strong></div>
+                  <div class="preview-field"><span>Subject</span><strong>Environmental Science</strong></div>
+                  <div class="preview-priority"><span>Priority</span><span>Low</span><strong>Medium</strong><span>High</span></div>
+                </div>
+              }
+              @case (1) {
+                <div class="tour-illustration tour-board">
+                  <div class="preview-heading"><app-icon name="board" /><strong>Task board</strong></div>
+                  <div class="preview-stages">
+                    <div><span class="status-dot" data-status="pending"></span><strong>Pending</strong><div class="preview-slot"></div></div>
+                    <div><span class="status-dot" data-status="in-progress"></span><strong>In Progress</strong>
+                      <div class="preview-task">Review notes</div>
+                    </div>
+                    <div><span class="status-dot" data-status="completed"></span><strong>Completed</strong><div class="preview-slot"></div></div>
+                  </div>
+                  <div class="preview-trail"><span></span><app-icon name="arrow" /><span></span></div>
+                </div>
+              }
+              @case (2) {
+                <div class="tour-illustration tour-grow">
+                  <svg viewBox="0 0 342 142" fill="none">
+                    <path d="M20 115h302" stroke="var(--line-control)" stroke-dasharray="2 6" />
+                    <g fill="var(--botanical-pot)">
+                      <path d="M36 97h47l-8 30H44zM149 97h47l-8 30h-31zM260 97h47l-8 30h-31z" />
+                    </g>
+                    <path d="M34 97h51m62 0h51m60 0h51" stroke="var(--botanical-pot-rim)" stroke-width="6" stroke-linecap="round" />
+                    <path d="M54 91c-1-7 1-11 10-13 1 7-2 11-10 13z" fill="var(--pending)" />
+                    <path d="M173 96V73m0 13-15-13" stroke="var(--botanical-stem)" stroke-width="2" />
+                    <path d="M172 84c-15-1-23-9-22-18 14 0 21 7 22 18zm1-6c0-12 9-20 20-19 1 11-7 18-20 19z" fill="var(--botanical-leaf)" />
+                    <g class="grow-stem">
+                      <path d="M282 96c2-17 0-37 7-62m-5 27-23-16m24 29 24-11" stroke="var(--botanical-stem)" stroke-width="2.5" stroke-linecap="round" />
+                      <path d="M287 47c-9-18-2-29 12-36 6 14 0 30-12 36zm-5 13c-22 0-35-10-35-24 18-1 32 9 35 24zm4 13c7-15 19-21 33-18-6 14-19 20-33 18z" fill="var(--botanical-leaf)" />
+                    </g>
+                  </svg>
+                  <div class="grow-steps"><span>Complete a task</span><span>Earn water</span><span>Nurture your plant</span></div>
+                </div>
+              }
+            }
+          </figure>
+        </section>
+      }
+    </div>
+
+    <div class="tour-controls">
+      <div class="tour-indicators" role="group" aria-label="Tour steps">
+        @for (slide of slides; track slide.label; let i = $index) {
+          <button type="button" [disabled]="busy()" [attr.aria-current]="i === index() ? 'step' : null"
+            [attr.aria-label]="'Step ' + (i + 1) + ': ' + slide.label" (click)="go(i)"><span></span></button>
+        }
+      </div>
+      <p class="tour-hint">
+        @if (index() === slides.length - 1) {
+          Swipe left, drag left, or press → to enter
+        } @else {
+          Swipe, drag, or use the arrow keys
+        }
+      </p>
+      @if (busy()) { <p class="sr-only" role="status">Saving your tour progress…</p> }
+      @if (error()) { <p class="field-error tour-error" role="alert">{{ error() }}</p> }
+    </div>
+  </main>
+</div>
+
+@if (finalSlide() && !reducedMotion()) {
+  <div class="tour-home-preview" inert aria-hidden="true">
+    <ng-container *ngComponentOutlet="homePreview; injector: previewInjector"></ng-container>
+  </div>
+}

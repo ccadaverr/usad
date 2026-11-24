@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { FLOWER_SITES, stemStretch } from './botanical-growth';
+import type { GardenState } from './garden.service';
 
 const { sin, cos, PI } = Math;
 const goldAngle = PI * (3 - Math.sqrt(5));
@@ -29,6 +31,36 @@ function blade(length: number, width: number, rise: number, tint: number) {
       const a = i * veins.length + j;
       const b = a + veins.length;
       indices.push(a, a + 1, b, b, a + 1, b + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setIndex(indices);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** Rounded, cupped petals share an edge geometry and softly shaded vertex colors. */
+function petal(length: number, tint: number) {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const base = new THREE.Color(tint);
+  const across = [-1, -.55, 0, .55, 1];
+  for (let row = 0; row <= 10; row++) {
+    const t = row / 10;
+    const width = length * .47 * Math.max(.015, sin(PI * t) ** .53 * (.70 + .48 * t));
+    for (const side of across) {
+      positions.push(length * t, length * (.26 * t * t + .32 * side * side * sin(PI * t)), width * side);
+      const shade = base.clone().multiplyScalar(.78 + t * .25 + Math.abs(side) * .045);
+      colors.push(shade.r, shade.g, shade.b);
+    }
+    if (!row) continue;
+    for (let column = 0; column < across.length - 1; column++) {
+      const here = row * across.length + column;
+      const above = here - across.length;
+      indices.push(above, here, above + 1, above + 1, here, here + 1);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -151,65 +183,127 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
       leaf(branchTip, azimuth + .27, .34, .09, .17, greens[1], group);
     }
 
-    if (index === 8) {
-      const bud = mesh(new THREE.SphereGeometry(.052, 9, 7), material(0xbd8a6a), group);
-      bud.position.copy(node).add(new THREE.Vector3(.07, .055, .03));
-      bud.scale.y = 1.38;
-      stem([node, node.clone().lerp(bud.position, .5), bud.position], .007, group, youngStem);
-    }
-    if (index === 9) {
-      const flower = new THREE.Group();
-      flower.position.copy(node);
-      group.add(flower);
-      for (let petal = 0; petal < 7; petal++) {
-        const shape = mesh(blade(.20, .061, .066, petal % 2 ? 0xddb294 : 0xebc5a3), bloomSurface, flower);
-        shape.rotation.y = -petal * 2 * PI / 7;
-      }
-      const disk = mesh(new THREE.SphereGeometry(.049, 12, 7), pollen, flower);
-      disk.scale.y = .53;
-      disk.position.y = .032;
-    }
     return group;
   });
 
-  const waterGeometry = new THREE.SphereGeometry(.024, 8, 6);
-  const waterSurface = new THREE.MeshStandardMaterial({ color: 0x83b5bd, roughness: .24, metalness: .08 });
-  const drops = Array.from({ length: 7 }, () => {
-    const drop = mesh(waterGeometry, waterSurface, scene);
-    drop.visible = false;
-    drop.scale.y = 1.55;
-    return drop;
+  const budAccent = material(0xb78c6f);
+  const calyx = material(0x68804f);
+  const buds = new THREE.SphereGeometry(.048, 12, 8);
+  const flowerCenters = new THREE.SphereGeometry(.036, 12, 7);
+  const flowers = FLOWER_SITES.map(site => {
+    const branch = new THREE.Group();
+    plant.add(branch);
+    const from = stalk.getPoint(site.anchor);
+    const direction = new THREE.Vector3(cos(site.angle), 0, sin(site.angle));
+    const elbow = from.clone().addScaledVector(direction, site.reach * .53).add(new THREE.Vector3(0, site.rise * .28, 0));
+    const tip = from.clone().addScaledVector(direction, site.reach).add(new THREE.Vector3(0, site.rise, 0));
+    stem([from, elbow, tip], .008, branch, youngStem);
+    leaf(elbow, site.angle + .84, .22, .051, .09, greens[2], branch);
+
+    const head = new THREE.Group();
+    head.position.copy(tip);
+    head.rotation.set(.66 + .11 * sin(site.angle), .19 * site.angle, -.28 * cos(site.angle));
+    branch.add(head);
+    const base = mesh(buds, calyx, head);
+    base.scale.set(.88, .43, .88);
+    const bud = mesh(buds, budAccent, head);
+    bud.position.y = .034;
+    const blossom = new THREE.Group();
+    head.add(blossom);
+    const petalGeometry = petal(site.size, site.tint);
+    const petals = Array.from({ length: 5 }, (_, index) => {
+      const joint = new THREE.Group();
+      joint.rotation.y = -index * 2 * PI / 5 + .13;
+      blossom.add(joint);
+      const shape = mesh(petalGeometry, bloomSurface, joint);
+      shape.position.x = .018;
+      return shape;
+    });
+    const center = mesh(flowerCenters, pollen, blossom);
+    center.position.y = .021;
+    center.scale.y = .47;
+    branch.visible = false;
+    return { site, branch, bud, blossom, petals, height: tip.y + site.size };
   });
+
+  const dropGeometry = new THREE.LatheGeometry([
+    [0, -.047], [.021, -.040], [.033, -.022], [.029, -.001], [.016, .032], [0, .067],
+  ].map(([radius, height]) => new THREE.Vector2(radius, height)), 12);
+  const waterSurface = new THREE.MeshStandardMaterial({ color: 0x77acbc, roughness: .29, metalness: .09 });
+  const drop = mesh(dropGeometry, waterSurface, scene);
+  drop.scale.setScalar(1.35);
+  const ringSurface = new THREE.MeshBasicMaterial({ color: 0xaedcde, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const ripple = mesh(new THREE.RingGeometry(.073, .089, 24), ringSurface, scene);
+  ripple.rotation.x = -PI / 2;
+  ripple.position.set(.20, .58, .24);
+  drop.visible = ripple.visible = false;
   const camera = new THREE.OrthographicCamera();
   let aspect = 1;
   let visible = false;
   let disposed = false;
   let frame = 0;
-  let level = 0;
-  let oldLevel = 0;
+  let level = 1;
+  let lifetime = -1;
+  let oldLevel = 1;
+  let oldLifetime = 0;
   let growthAt = -Infinity;
   let waterAt = -Infinity;
   let yaw = -.43;
+  pivot.rotation.y = yaw;
+
+  const unit = (value: number) => Math.max(0, Math.min(1, value));
+  const ease = (value: number) => 1 - (1 - value) ** 3;
+  const plantHeight = (stage: number, count: number) => {
+    const stemHeight = stalk.getPoint(tips[stage - 1]).y;
+    const tallest = flowers.reduce((height, flower) => flower.site.bud <= stage ? Math.max(height, flower.height) : height, stemHeight);
+    return .61 + tallest * stemStretch(count);
+  };
 
   function draw(time: number) {
     frame = 0;
     if (disposed || !visible || document.hidden) return;
-    const growth = Math.min(1, (time - growthAt) / 590);
-    const eased = 1 - (1 - growth) ** 3;
+    const elapsed = time - growthAt;
+    const growth = unit(elapsed / 670);
+    const eased = ease(growth);
+    const previousStretch = stemStretch(oldLifetime);
+    const currentStretch = stemStretch(Math.max(0, lifetime));
+    plant.scale.y = previousStretch + (currentStretch - previousStretch) * eased + sin(growth * PI) * .032;
     layers.forEach((layer, index) => {
-      if (layer.visible) layer.scale.setScalar(index >= oldLevel ? .045 + .955 * eased : 1);
+      if (layer.visible) layer.scale.setScalar(index >= oldLevel ? .05 + .95 * eased : 1);
     });
-    const water = (time - waterAt) / 950;
-    const specimenHeight = .70 + (oldLevel + (level - oldLevel) * eased) * .205;
-    for (let i = 0; i < drops.length; i++) {
-      const t = (water - i * .064) * 1.72;
-      drops[i].visible = t >= 0 && t < 1;
-      if (drops[i].visible) drops[i].position.set(-.25 + .10 * i + .17 * t, specimenHeight + .26 - t * (.55 + i * .045), .28 - i * .081);
+    for (const { site, branch, bud, blossom, petals } of flowers) {
+      if (!branch.visible) continue;
+      const emerged = site.bud > oldLevel ? ease(unit(elapsed / 590)) : 1;
+      // Branch points are stalk-relative. The young bud emerges without detaching from its stem.
+      const opened = level < site.open ? 0 : site.open <= oldLevel ? 1 : ease(unit((elapsed - 95) / 760));
+      bud.visible = opened < .88;
+      bud.scale.set(.78, 1.18, .78).multiplyScalar((.28 + .72 * emerged) * (1 - .64 * opened));
+      blossom.visible = opened > 0;
+      blossom.scale.setScalar(.36 + .64 * opened);
+      petals.forEach((shape, index) => { shape.rotation.z = (1 - opened) * (1.28 + .045 * index) - .13; });
     }
-    plant.rotation.z = water < 1 ? sin(water * PI * 3) * (1 - water) * .032 : 0;
+
+    const heightBefore = plantHeight(oldLevel, oldLifetime);
+    const specimenHeight = heightBefore + (plantHeight(level, Math.max(0, lifetime)) - heightBefore) * eased;
+    const watering = time - waterAt;
+    const descent = unit(watering / 450);
+    const impact = unit((watering - 435) / 510);
+    drop.visible = watering >= 0 && descent < 1;
+    if (drop.visible) {
+      const dropHeight = Math.max(.34, Math.min(1.45, specimenHeight - .61));
+      drop.position.set(.20 + .59 * (1 - descent), .63 + dropHeight * (1 - descent ** 1.8),
+        .24 + .23 * (1 - descent));
+      drop.rotation.z = -.22 * (1 - descent);
+    }
+    ripple.visible = watering >= 435 && impact < 1;
+    if (ripple.visible) {
+      ripple.scale.setScalar(.26 + 1.7 * ease(impact));
+      ringSurface.opacity = .7 * (1 - impact);
+    }
+    plant.rotation.z = impact > 0 && impact < 1 ? sin(impact * PI * 2) * (1 - impact) * .032 : 0;
     pivot.rotation.y += (yaw - pivot.rotation.y) * .24;
 
-    const span = Math.max(specimenHeight + .72, 1.73 / aspect);
+    const span = Math.max(specimenHeight + .64, 1.79 / aspect);
     const aim = specimenHeight * .5;
     camera.left = -span * aspect / 2;
     camera.right = span * aspect / 2;
@@ -219,7 +313,7 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     camera.lookAt(0, aim, 0);
     camera.updateProjectionMatrix();
     try { renderer.render(scene, camera); } catch { failed(); return; }
-    if (growth < 1 || water < 1 || Math.abs(yaw - pivot.rotation.y) > .003) schedule();
+    if (elapsed < 855 || watering < 945 || Math.abs(yaw - pivot.rotation.y) > .003) schedule();
   }
 
   function schedule() {
@@ -243,12 +337,16 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
   canvas.addEventListener('webglcontextlost', failed);
 
   return {
-    stage(value: number) {
-      if (level === value) return;
-      oldLevel = level && value > level ? level : value;
-      growthAt = oldLevel === value ? -Infinity : performance.now();
-      level = value;
+    stage(value: Pick<GardenState, 'level' | 'lifetime'>, previousLevel?: number) {
+      if (level === value.level && lifetime === value.lifetime) return;
+      level = value.level;
+      lifetime = value.lifetime;
+      oldLevel = previousLevel ?? level;
+      oldLifetime = previousLevel === undefined ? lifetime : lifetime - 1;
+      growthAt = previousLevel === undefined ? -Infinity : performance.now();
+      if (previousLevel !== undefined) waterAt = -Infinity;
       layers.forEach((layer, index) => { layer.visible = index < level; });
+      flowers.forEach(flower => { flower.branch.visible = level >= flower.site.bud; });
       schedule();
     },
     rotate(delta: number) { yaw += delta; schedule(); },

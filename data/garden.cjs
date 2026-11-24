@@ -1,4 +1,4 @@
-const levelFor = (count) => Math.min(10, 1 + Math.floor(count / 5));
+const levelFor = (count) => Math.min(10, 1 + Math.floor(count / 2));
 
 /** Version 1 imports only observable completed records. The first commit saves the migration. */
 function reconcileGarden(garden, tasks) {

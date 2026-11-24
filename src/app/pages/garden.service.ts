@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 
 export interface GardenState {
   lifetime: number;
@@ -10,6 +10,7 @@ export interface GardenState {
 @Injectable({ providedIn: 'root' })
 export class GardenService {
   private readonly http = inject(HttpClient);
+  readonly pendingWater = signal<string | null>(null);
 
   load() {
     return this.http.get<GardenState>('/api/garden', { timeout: 8000 });

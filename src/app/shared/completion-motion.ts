@@ -42,7 +42,8 @@ export class CompletionMotion {
     this.lastRow = undefined;
     // The featured task slot can immediately show a different assignment.
     if (source && !source.element.classList.contains('home-priority')) {
-      const anchor = source.element.querySelector('.complete-action app-icon')?.getBoundingClientRect();
+      const anchor = source.element.querySelector('[data-swipe="complete"].swipe-saving .swipe-complete app-icon')?.getBoundingClientRect() ??
+        source.element.querySelector('.complete-action app-icon')?.getBoundingClientRect();
       this.position.set({
         sequence: ++this.sequence,
         title,

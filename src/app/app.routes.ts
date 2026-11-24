@@ -1,16 +1,12 @@
 import { Routes } from '@angular/router';
-import { BoardComponent } from './board/board.component';
-import { DeadlinesComponent } from './pages/deadlines.component';
-import { HomeComponent } from './pages/home.component';
-import { ProgressComponent } from './pages/progress.component';
+import { requireGuest } from './guest/guest.guards';
 
 export const routes: Routes = [
-  { path: '', component: HomeComponent, data: { page: 'Home' }, title: 'Home · USAD' },
-  { path: 'board', component: BoardComponent, data: { page: 'Board' }, title: 'Board · USAD' },
-  { path: 'deadlines', component: DeadlinesComponent, data: { page: 'Deadlines' }, title: 'Deadlines · USAD' },
+  { path: '', pathMatch: 'full', title: 'Welcome · USAD',
+    loadComponent: () => import('./guest/welcome.component').then(module => module.WelcomeComponent) },
+  { path: 'onboarding', canActivate: [requireGuest], title: 'A short tour · USAD',
+    loadComponent: () => import('./guest/onboarding.component').then(module => module.OnboardingComponent) },
   { path: 'progress/garden', pathMatch: 'full', redirectTo: 'garden' },
-  { path: 'garden', loadComponent: () => import('./pages/plant.component').then(module => module.PlantComponent),
-    data: { page: 'Munting Tanim' }, title: 'Munting Tanim · USAD' },
-  { path: 'progress', component: ProgressComponent, data: { page: 'Progress' }, title: 'Progress · USAD' },
+  { path: '', loadChildren: () => import('./workspace.routes').then(module => module.workspaceRoutes) },
   { path: '**', redirectTo: '' },
 ];

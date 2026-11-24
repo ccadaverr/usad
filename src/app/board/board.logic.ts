@@ -74,10 +74,21 @@ export function moveRank(tasks: Task[], task: Task, status: TaskStatus, index?: 
   return rankBetween(siblings[position - 1]?.order ?? null, siblings[position]?.order ?? null);
 }
 
+export function taskSwipeStatus(status: TaskStatus | undefined, action: 'start' | 'complete'): TaskStatus | null {
+  if (status === 'pending') return action === 'start' ? 'in-progress' : 'completed';
+  return status === 'in-progress' && action === 'complete' ? 'completed' : null;
+}
+
+function calendarDistance(date: string, today: string): number {
+  // ISO date-only strings represent calendar days, independent of local DST changes.
+  return (Date.parse(date) - Date.parse(today)) / 86_400_000;
+}
+
 export function groupDeadlines(tasks: Task[], today: string) {
-  const groups: Record<'overdue' | 'today' | 'upcoming' | 'undated', Task[]> = {
+  const groups: Record<'overdue' | 'today' | 'tomorrow' | 'upcoming' | 'undated', Task[]> = {
     overdue: [],
     today: [],
+    tomorrow: [],
     upcoming: [],
     undated: [],
   };
@@ -87,6 +98,7 @@ export function groupDeadlines(tasks: Task[], today: string) {
     if (!task.dueDate) groups.undated.push(task);
     else if (isOverdue(task, today)) groups.overdue.push(task);
     else if (task.dueDate === today) groups.today.push(task);
+    else if (calendarDistance(task.dueDate, today) === 1) groups.tomorrow.push(task);
     else groups.upcoming.push(task);
   }
   return groups;
@@ -95,8 +107,10 @@ export function groupDeadlines(tasks: Task[], today: string) {
 export function deadlineContext(task: Pick<Task, 'dueDate' | 'status'>, today: string) {
   if (!task.dueDate) return { tone: 'neutral', label: 'No due date' };
   if (task.status === 'completed') return { tone: 'neutral', label: 'Due' };
-  if (task.dueDate < today) return { tone: 'overdue', label: 'Overdue' };
-  if (task.dueDate === today) return { tone: 'today', label: 'Due today' };
-  if (Date.parse(task.dueDate) - Date.parse(today) <= 7 * 86_400_000) return { tone: 'soon', label: 'Due soon' };
+  const days = calendarDistance(task.dueDate, today);
+  if (days < 0) return { tone: 'overdue', label: `${-days} ${days === -1 ? 'day' : 'days'} overdue` };
+  if (days === 0) return { tone: 'today', label: 'Due today' };
+  if (days === 1) return { tone: 'tomorrow', label: 'Due tomorrow' };
+  if (days <= 7) return { tone: 'soon', label: 'Due soon' };
   return { tone: 'neutral', label: 'Due' };
 }

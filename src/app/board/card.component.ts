@@ -1,5 +1,7 @@
 import { DeadlineComponent } from '../shared/deadline.component';
 import { TaskActionsComponent } from '../shared/task-actions.component';
+import { SwipeActionsComponent } from '../shared/swipe-actions.component';
+import { SwipeRowDirective } from '../shared/swipe-row.directive';
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { DialogsService } from '../shared/dialogs.service';
 import { IconComponent } from '../shared/icon.component';
@@ -8,29 +10,41 @@ import { BoardStore } from './board.store';
 
 @Component({
   selector: 'app-card',
-  imports: [TaskActionsComponent, DeadlineComponent, IconComponent],
+  imports: [TaskActionsComponent, DeadlineComponent, IconComponent, SwipeRowDirective, SwipeActionsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let record = task();
-    <div class="card-subject">{{ record.subject }}</div>
-    <h3><button class="task-title" type="button" (click)="dialogs.openTask(record)">{{ record.title }}</button></h3>
-    <div class="card-meta">
-      <span class="priority" [attr.data-priority]="record.priority">{{ priorityLabels[record.priority] }} priority</span>
-      <app-deadline [task]="record" />
+    <div class="swipe-row card-interaction" [appSwipeRow]="record.id" #swipe="swipeRow"
+      [attr.aria-busy]="swipe.saving() ? 'true' : null">
+      <app-swipe-actions [saving]="swipe.saving()" />
+      <div class="swipe-content">
+        <h3>
+          <button class="task-title" type="button" (click)="swipe.open($event) && dialogs.openTask(record)">
+            <span class="card-subject">{{ record.subject }}</span>
+            <span>{{ record.title }}</span>
+            <span class="card-meta">
+              <span class="priority" [attr.data-priority]="record.priority">{{ priorityLabels[record.priority] }} priority</span>
+              <app-deadline [task]="record" />
+            </span>
+          </button>
+        </h3>
+        <div class="card-controls">
+          <app-task-actions [task]="record" />
+          <label class="move-control">
+            <span class="sr-only">Move {{ record.title }} to another stage</span>
+            <select [disabled]="!store.canWrite()" (change)="move($event)">
+              <option value="" selected disabled>Move to…</option>
+              @for (status of statuses; track status) {
+                @if (status !== record.status) {
+                  <option [value]="status">{{ statusLabels[status] }}</option>
+                }
+              }
+            </select>
+            <app-icon name="chevron" />
+          </label>
+        </div>
+      </div>
     </div>
-    <app-task-actions [task]="record" />
-    <label class="move-control">
-      <span class="sr-only">Move {{ record.title }} to another stage</span>
-      <select [disabled]="!store.canWrite()" (change)="move($event)">
-        <option value="" selected disabled>Move to…</option>
-        @for (status of statuses; track status) {
-          @if (status !== record.status) {
-            <option [value]="status">{{ statusLabels[status] }}</option>
-          }
-        }
-      </select>
-      <app-icon name="chevron" />
-    </label>
   `,
 })
 export class CardComponent {

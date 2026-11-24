@@ -1,7 +1,8 @@
 const { readFileSync, renameSync, rmSync, writeFileSync } = require('node:fs');
-const { join, resolve } = require('node:path');
+const { dirname, join, resolve } = require('node:path');
 const jsonServer = require('json-server');
 const { gardenView, levelFor, reconcileGarden, spendWater } = require('./garden.cjs');
+const { createGuestApp } = require('./guest-api.cjs');
 
 function writeSnapshot(file, snapshot) {
   const temporary = `${file}.${process.pid}.tmp`;
@@ -67,6 +68,7 @@ function createApp(file, persist = writeSnapshot) {
     if (request.method !== 'GET' && count > previousCount) {
       // These receipts describe an award only after the shared snapshot committed.
       response.set('X-USAD-Water-Earned', '1');
+      response.set('X-USAD-Garden-Lifetime', String(count));
       const level = levelFor(count);
       if (level > levelFor(previousCount)) response.set('X-USAD-Garden-Level', String(level));
     }
@@ -79,9 +81,16 @@ function createApp(file, persist = writeSnapshot) {
 if (require.main === module) {
   const file = resolve(process.argv[2] ?? (process.env.USAD_DATA_FILE || join(__dirname, 'db.json')));
   const port = Number(process.argv[3] ?? (process.env.PORT || 3000));
-  const host = process.env.RAILWAY_ENVIRONMENT_ID ? '0.0.0.0' : '127.0.0.1';
-  const server = createApp(file).listen(port, host, () => {
+  const hosted = !!process.env.RAILWAY_ENVIRONMENT_ID || process.env.NODE_ENV === 'production';
+  const host = hosted ? '0.0.0.0' : '127.0.0.1';
+  const guests = resolve(process.env.USAD_GUEST_DIR || join(dirname(file), 'guests'));
+  const server = createGuestApp(guests, { hosted, allowedOrigins: process.env.USAD_ALLOWED_ORIGINS }).listen(port, host, () => {
     console.log(`USAD API listening on ${host}:${server.address().port}`);
+  });
+  server.on('error', error => {
+    if (error.code !== 'EADDRINUSE') throw error;
+    console.error(`USAD API could not start on ${host}:${port}. Stop the existing listener, then run npm run api again.`);
+    process.exitCode = 1;
   });
 }
 module.exports = { createApp };

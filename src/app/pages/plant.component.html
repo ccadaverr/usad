@@ -5,37 +5,70 @@
 </div>
 
 <section class="garden-layout" aria-label="Your garden">
-  <figure class="plant-art" [class.just-watered]="watered()">
+  <figure class="plant-art" [class.just-watered]="watered() && growthFrom() === null"
+    [attr.data-garden-level]="level()" [attr.data-buds]="flowers().length - bloomCount()"
+    [attr.data-blossoms]="bloomCount()">
     <canvas #canvas [class.plant-ready]="ready()" [attr.tabindex]="ready() ? 0 : -1"
       [attr.aria-hidden]="!ready()" aria-label="Botanical specimen. Drag horizontally or use the left and right arrow keys to turn it."
       (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="release()"
       (pointercancel)="release()" (lostpointercapture)="release()" (keydown)="rotate($event)"></canvas>
     @if (!ready()) {
-      <svg class="plant-fallback" viewBox="0 0 240 244" role="img" [attr.aria-label]="state() ? stage() + ' in a terracotta pot' : 'Botanical illustration'">
-        <ellipse cx="120" cy="221" rx="67" ry="9" fill="#d7d0ba" />
+      <svg class="plant-fallback" viewBox="0 0 240 244" role="img"
+        [attr.aria-label]="state() ? stage() + ' in a terracotta pot' : 'Botanical illustration'">
+        <ellipse cx="120" cy="221" rx="67" ry="9" fill="var(--botanical-shadow)" />
         <path d="M83 169Q120 156 157 169L147 216Q120 230 93 216Z" fill="#a35842" />
         <path d="M90 179Q105 181 108 218Q98 219 94 213Z" fill="#c58262" opacity=".65" />
         <path d="M79 167Q120 154 161 167L159 178Q120 189 81 178Z" fill="#be7c5c" />
         <ellipse cx="120" cy="167" rx="40" ry="9" fill="#72503d" />
         <ellipse cx="120" cy="167" rx="34" ry="6" fill="#4d4835" />
-        @for (layer of layers(); track layer) {
-          <g [attr.transform]="'translate(120,' + (165 - layer * 13) + ')'">
-            <path d="M0 8Q4 1 0 -11" fill="none" stroke="#47644a" stroke-width="2.5" />
-            <g [attr.transform]="layer % 2 ? 'scale(-1 1)' : null">
-              <path [attr.d]="layer > 4 ? 'M0 0Q16 -26 54 -20Q35 7 0 0Z' : 'M0 0Q12 -22 39 -16Q26 5 0 0Z'" [attr.fill]="layer % 2 ? '#608064' : '#375f4b'" />
-              <path [attr.d]="layer > 4 ? 'M0 0Q26 -9 50 -19' : 'M0 0Q16 -6 36 -15'" fill="none" stroke="#bcc19a" stroke-width=".65" />
-              @if (layer > 4) { <path d="M0 3Q-12 -16 -37 -14Q-24 7 0 3Z" fill="#789481" /> }
+        <g class="fallback-water-response">
+          <g [attr.transform]="'translate(0 167) scale(1 ' + stretch() + ') translate(0 -167)'">
+            <g class="fallback-growth" [class.fallback-growing]="growthFrom() !== null">
+              @for (layer of layers(); track layer) {
+                <g [attr.transform]="'translate(120,' + (165 - layer * 13) + ')'">
+                  <path d="M0 8Q4 1 0 -11" fill="none" stroke="#547658" stroke-width="2.2" stroke-linecap="round" />
+                  <g [attr.transform]="layer % 2 ? 'scale(-1 1)' : null">
+                    <path [attr.d]="layer > 4 ? 'M0 0Q16 -26 54 -20Q35 7 0 0Z' : 'M0 0Q12 -22 39 -16Q26 5 0 0Z'"
+                      [attr.fill]="layer % 2 ? '#71936b' : '#4b785c'" />
+                    <path [attr.d]="layer > 4 ? 'M0 0Q26 -9 50 -19' : 'M0 0Q16 -6 36 -15'"
+                      fill="none" stroke="#d3d1aa" stroke-width=".65" />
+                    @if (layer > 2) { <path d="M0 3Q-12 -16 -37 -14Q-24 7 0 3Z" fill="#809e7c" /> }
+                  </g>
+                </g>
+              }
+              @for (flower of flowers(); track flower.bud) {
+                <path [attr.d]="'M120 ' + flower.branchY + ' Q ' + ((120 + flower.x) / 2) + ' ' +
+                  (flower.branchY - 5) + ' ' + flower.x + ' ' + (flower.y + 2)"
+                  fill="none" stroke="#638765" stroke-width="1.5" stroke-linecap="round" />
+                <g [attr.transform]="'translate(' + flower.x + ' ' + flower.y + ')'">
+                  @if (flower.blooming) {
+                    <g class="fallback-flower" [class.flower-unfold]="growthFrom() !== null && flower.open > growthFrom()!">
+                      @for (angle of petals; track angle) {
+                        <path d="M0 2C-2 -1 -6 -4 -5 -9C-4 -15 4 -16 5 -9C6 -4 3 -1 0 2Z"
+                          [attr.transform]="'rotate(' + angle + ')'" [attr.fill]="'#' + flower.tint.toString(16)"
+                          stroke="#8e6653" stroke-opacity=".34" stroke-width=".5" />
+                      }
+                      <circle r="3.1" fill="#b18046" />
+                      <circle cx="-.65" cy="-.6" r="1.25" fill="#ebc885" />
+                    </g>
+                  } @else {
+                    <path d="M0 3C-7 0 -5 -7 -.5 -10C4 -8 7 -1 0 3Z" [attr.fill]="'#' + flower.tint.toString(16)" />
+                    <path d="M-4 -1L0 4L4 -1L0 1Z" fill="#648057" />
+                  }
+                </g>
+              }
             </g>
           </g>
-        }
-        @if (level() > 8) {
-          <path d="M120 61Q118 47 123 30" stroke="#47644a" stroke-width="2" fill="none" />
-          <path d="M123 33Q106 32 111 21Q117 14 123 25Q125 12 134 17Q143 26 126 33Z" fill="#d0a182" />
-          @if (level() === 10) { <circle cx="123" cy="27" r="4" fill="#a67a46" /> }
+        </g>
+        @if (watered() && growthFrom() === null) {
+          <g class="fallback-watering" aria-hidden="true">
+            <ellipse class="fallback-ripple" cx="137" cy="161" rx="14" ry="4" fill="none" stroke="#a9d3d8" stroke-width="1.1" />
+            <path class="fallback-watering-drop" d="M137 151Q132 157 132 160a5 5 0 0 0 10 0q0-3-5-9Z"
+              fill="#a9d3d8" stroke="#5a9ba8" stroke-width=".6" />
+          </g>
         }
       </svg>
     }
-    @if (watered()) { <span class="watering-mark" aria-hidden="true"></span> }
   </figure>
 
   <div class="garden-record">
@@ -44,7 +77,7 @@
       <h2>{{ stage() }}</h2>
       <p>{{ garden.lifetime }} lifetime {{ garden.lifetime === 1 ? 'completion' : 'completions' }}</p>
       @if (remaining()) {
-        <progress class="progress-meter" [value]="garden.lifetime % 5" max="5" aria-label="First-time completions toward next level"></progress>
+        <progress class="progress-meter" [value]="garden.lifetime % completionsPerLevel" [max]="completionsPerLevel" aria-label="First-time completions toward next level"></progress>
         <p class="muted">{{ remaining() }} {{ remaining() === 1 ? 'task' : 'tasks' }} to level {{ garden.level + 1 }}</p>
       } @else { <p class="muted">Your plant has reached full growth.</p> }
       <div class="garden-water">
@@ -52,11 +85,16 @@
           @if (!garden.available) { <p class="muted">Complete a task for the first time to earn a drop.</p> }
         </div>
         @if (garden.available || pendingWater()) {
-          <button class="button button-primary" type="button" [disabled]="loading() || saving()"
+          <button class="btn button button-primary" type="button" [disabled]="loading() || saving()"
             (click)="water()">{{ saving() ? 'Saving…' : pendingWater() ? 'Retry watering' : 'Water plant' }}</button>
         }
       </div>
-      <p class="garden-feedback" role="status">{{ watered() ? 'Plant watered.' : '' }}</p>
+      <div class="garden-results">
+        <p class="garden-feedback" role="status">{{ watered() ? 'Plant watered.' : growthNotice() }}</p>
+        @if (undoTask()) {
+          <button class="btn button button-plain" type="button" [disabled]="!canWrite()" (click)="undoCompletion()">Undo completion</button>
+        }
+      </div>
     } @else if (loading()) {
       <p role="status">Loading your garden…</p>
     }

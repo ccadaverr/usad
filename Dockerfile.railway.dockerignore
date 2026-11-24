@@ -6,5 +6,5 @@
 data/**
 !data/server.cjs
 !data/garden.cjs
-!data/seed.mjs
-!data/seed.json
+!data/guest-api.cjs
+!data/guest-storage.cjs

@@ -96,7 +96,10 @@ describe('board.logic', () => {
     const classify = (dueDate: string | null, status: Task['status'] = 'pending') =>
       deadlineContext({ ...first, dueDate, status }, today);
     expect(classify('2026-11-23').tone).toBe('overdue');
+    expect(classify('2026-11-23').label).toBe('1 day overdue');
+    expect(classify('2026-11-21').label).toBe('3 days overdue');
     expect(classify(today).tone).toBe('today');
+    expect(classify('2026-11-25')).toEqual({ tone: 'tomorrow', label: 'Due tomorrow' });
     expect(classify('2026-12-01').tone).toBe('soon');
     expect(classify('2026-12-02').tone).toBe('neutral');
     expect(classify('2026-11-23', 'completed').tone).toBe('neutral');
@@ -119,9 +122,16 @@ describe('board.logic', () => {
       { ...first, dueDate: '2026-11-22' },
       { ...second, dueDate: '2026-11-24' },
       { ...third, dueDate: '2026-11-28' },
+      { ...third, id: 'tomorrow', dueDate: '2026-11-25' },
       fourth,
       makeTask('done', 'a0', { status: 'completed', dueDate: '2026-11-21' }),
     ], '2026-11-24');
-    expect(Object.values(groups).map((tasks) => tasks.map(({ id }) => id))).toEqual([['c1'], ['c2'], ['c3'], ['c4']]);
+    expect(Object.values(groups).map((tasks) => tasks.map(({ id }) => id))).toEqual([['c1'], ['c2'], ['tomorrow'], ['c3'], ['c4']]);
+  });
+
+  it('distinguishes calendar days over DST weekends and at month boundaries', () => {
+    expect(deadlineContext({ ...first, dueDate: '2026-03-09' }, '2026-03-07').label).toBe('Due soon');
+    expect(deadlineContext({ ...first, dueDate: '2027-01-01' }, '2026-12-31').label).toBe('Due tomorrow');
+    expect(deadlineContext({ ...first, dueDate: '2026-12-31' }, '2027-01-01').label).toBe('1 day overdue');
   });
 });

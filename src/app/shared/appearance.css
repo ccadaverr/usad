@@ -1,0 +1,322 @@
+/* Theme roles live on html so CDK overlay containers inherit the same colors. */
+:root {
+  color-scheme: light;
+  --color-action: #23493d;
+  --color-action-hover: #19382e;
+  --color-action-muted: #dbe8dd;
+  --color-accent: #789481;
+  --sand: #c0a67f;
+  --canvas: #f1f0e8;
+  --paper: #faf9f4;
+  --white: #ffffff;
+  --ink: #203b32;
+  --muted: #526459;
+  --line: #d5dbcf;
+  --line-control: #7f8d81;
+  --hover: #ecf0e8;
+  --selected: #e3ebe2;
+  --focus: #316d5a;
+  --focus-paper: #f4dfb8;
+  --disabled-bg: #e8eae3;
+  --disabled-ink: #57665a;
+  --success-ink: #23493d;
+  --success-bg: #e3ebe2;
+  --garden-stage-bg: #e9e6d8;
+  --tour-grow-bg: #f3e9d7;
+  --botanical-leaf: #789481;
+  --botanical-leaf-light: #acb98f;
+  --botanical-stem: #60765e;
+  --botanical-vein: #e8edcc;
+  --botanical-pot: #9f5c47;
+  --botanical-pot-rim: #be795c;
+  --botanical-pot-light: #d29a76;
+  --botanical-soil: #5e5041;
+}
+
+:root[data-theme="blue-hour"] {
+  --color-action: #324e70;
+  --color-action-hover: #243d5d;
+  --color-action-muted: #dbe7f7;
+  --color-accent: #778da8;
+  --sand: #c3b394;
+  --canvas: #e9edf2;
+  --paper: #f4f6fa;
+  --white: #fcfdff;
+  --ink: #23344b;
+  --muted: #4a5b70;
+  --line: #c9d4de;
+  --line-control: #748496;
+  --hover: #e9eef5;
+  --selected: #dce6f2;
+  --focus: #325c8d;
+  --focus-paper: #e6efff;
+  --disabled-bg: #e4eaf0;
+  --disabled-ink: #536377;
+  --success-bg: #e2ebe6;
+  --garden-stage-bg: #dfe7ed;
+  --tour-grow-bg: #e5ecef;
+  --botanical-leaf: #748f87;
+  --botanical-leaf-light: #a2b9a3;
+  --botanical-stem: #56756d;
+  --botanical-vein: #e4ede0;
+  --botanical-pot: #627d90;
+  --botanical-pot-rim: #849eaf;
+  --botanical-pot-light: #a9bdca;
+  --botanical-soil: #4c565b;
+}
+
+:root[data-theme="warm-clay"] {
+  --color-action: #804530;
+  --color-action-hover: #653625;
+  --color-action-muted: #f8dfd3;
+  --color-accent: #a67761;
+  --sand: #bc945e;
+  --canvas: #f1e8df;
+  --paper: #fbf4ec;
+  --white: #fffaf6;
+  --ink: #472f26;
+  --muted: #68534a;
+  --line: #dbcabd;
+  --line-control: #8f7368;
+  --hover: #f4e7dc;
+  --selected: #efded0;
+  --focus: #8c4a35;
+  --focus-paper: #ffe7bc;
+  --disabled-bg: #eee0d6;
+  --disabled-ink: #6a554b;
+  --success-bg: #e8eadf;
+  --garden-stage-bg: #ebdcd0;
+  --tour-grow-bg: #f0e2d2;
+  --botanical-leaf: #818861;
+  --botanical-leaf-light: #a7af7e;
+  --botanical-stem: #6c7652;
+  --botanical-vein: #eae8c0;
+  --botanical-pot: #a65c45;
+  --botanical-pot-rim: #c68160;
+  --botanical-pot-light: #dc9f78;
+  --botanical-soil: #614a3d;
+}
+
+:root {
+  /* Existing USAD controls use these aliases. Status and error meanings are shared. */
+  --forest: var(--color-action);
+  --forest-hover: var(--color-action-hover);
+  --on-forest: var(--color-action-muted);
+  --action-ink: var(--white);
+  --danger-ink: #fffaf7;
+  --sage: var(--color-accent);
+  --error: #8b382a;
+  --error-hover: #6e281e;
+  --error-bg: #faece7;
+  --error-line: #d9ab9c;
+  --priority-high: #384c63;
+  --priority-high-bg: #e5e9ef;
+  --priority-medium: #654b24;
+  --priority-medium-bg: #f3e9d7;
+  --priority-low: #3e5d48;
+  --priority-low-bg: #e8f0e7;
+  --pending: #796346;
+  --active: #476b70;
+  --complete: #23493d;
+  --due-today: #81501e;
+  --due-soon: #70592e;
+  --due-overdue: #933e36;
+  --due-today-bg: #f7ecd9;
+  --due-soon-bg: #f4efe3;
+  --swipe-start-bg: #e2edee;
+  --swipe-start-ready: #345d65;
+  --swipe-start-ready-ink: #fcffff;
+  --overlay-shade: color-mix(in srgb, var(--ink) 55%, transparent);
+  --botanical-shadow: color-mix(in srgb, var(--ink) 16%, transparent);
+  --shadow-lifted: 0 12px 32px color-mix(in srgb, var(--ink) 15%, transparent),
+    0 2px 6px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Each dark palette defines its own canvas, surfaces and interaction colors. */
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --canvas: #141e1a;
+  --paper: #1a2620;
+  --white: #223028;
+  --ink: #ecf2e8;
+  --muted: #afc0b4;
+  --line: #36483e;
+  --line-control: #7e9385;
+  --hover: #293930;
+  --selected: #304439;
+  --color-action: #b5d7bd;
+  --color-action-hover: #c9e7cf;
+  --color-action-muted: #2e5040;
+  --color-accent: #9db8a1;
+  --action-ink: #182d22;
+  --sand: #d7bd94;
+  --focus: #a8d8b6;
+  --focus-paper: #244f36;
+  --disabled-bg: #2d3a32;
+  --disabled-ink: #a0b1a4;
+  --garden-stage-bg: #303a2d;
+  --tour-grow-bg: #31372a;
+  --botanical-leaf: #91aa87;
+  --botanical-leaf-light: #b6c398;
+  --botanical-stem: #a0aa7e;
+  --botanical-vein: #dde7bb;
+  --botanical-pot: #a26955;
+  --botanical-pot-rim: #b97d64;
+  --botanical-pot-light: #d39b7f;
+  --botanical-soil: #523d31;
+  --error: #ffb5a6;
+  --error-hover: #ffcbbf;
+  --danger-ink: #431b15;
+  --error-bg: #412723;
+  --error-line: #8f5148;
+  --priority-high: #c9d9f5;
+  --priority-high-bg: #32415d;
+  --priority-medium: #f0d298;
+  --priority-medium-bg: #413725;
+  --priority-low: #c0ddbc;
+  --priority-low-bg: #2d4133;
+  --pending: #d3bb98;
+  --active: #a2cfd7;
+  --complete: #a9d4b3;
+  --success-ink: #c4e5c9;
+  --success-bg: #293e32;
+  --due-today: #f2ca90;
+  --due-today-bg: #432f20;
+  --due-soon: #dccc9a;
+  --due-soon-bg: #373223;
+  --due-overdue: #ffb5a6;
+  --swipe-start-bg: #263c43;
+  --swipe-start-ready: #a2cfd7;
+  --swipe-start-ready-ink: #182e35;
+  --overlay-shade: rgb(5 8 7 / .72);
+  --botanical-shadow: rgb(0 0 0 / .25);
+  --shadow-lifted: 0 12px 32px rgb(0 0 0 / .32), 0 2px 6px rgb(0 0 0 / .23);
+}
+
+:root[data-mode="dark"][data-theme="blue-hour"] {
+  --canvas: #161d29;
+  --paper: #1c2635;
+  --white: #242f40;
+  --ink: #edf1fb;
+  --muted: #b1bed1;
+  --line: #39475d;
+  --line-control: #8494ad;
+  --hover: #2c3a4e;
+  --selected: #33445c;
+  --color-action: #bdd5f7;
+  --color-action-hover: #d5e5fd;
+  --color-action-muted: #2c4564;
+  --color-accent: #9ab4d3;
+  --action-ink: #1b304a;
+  --focus: #a9ceff;
+  --focus-paper: #28476d;
+  --disabled-bg: #2d394d;
+  --disabled-ink: #a6b6ca;
+  --garden-stage-bg: #2b3a46;
+  --tour-grow-bg: #2b3c43;
+  --botanical-leaf: #86aca3;
+  --botanical-leaf-light: #a8c8b3;
+  --botanical-stem: #93afa3;
+  --botanical-vein: #e0efde;
+  --botanical-pot: #697e95;
+  --botanical-pot-rim: #839bb3;
+  --botanical-pot-light: #adc3d7;
+  --botanical-soil: #384754;
+}
+
+:root[data-mode="dark"][data-theme="warm-clay"] {
+  --canvas: #251b18;
+  --paper: #2d211d;
+  --white: #392923;
+  --ink: #f7ede5;
+  --muted: #d0b9ab;
+  --line: #533e35;
+  --line-control: #a48878;
+  --hover: #432f28;
+  --selected: #50372d;
+  --color-action: #efbca4;
+  --color-action-hover: #f9d0bd;
+  --color-action-muted: #694739;
+  --color-accent: #c59178;
+  --action-ink: #41251b;
+  --focus: #f5bd9e;
+  --focus-paper: #673a29;
+  --disabled-bg: #46332c;
+  --disabled-ink: #c3a99d;
+  --garden-stage-bg: #49382e;
+  --tour-grow-bg: #41352b;
+  --botanical-leaf: #9fa477;
+  --botanical-leaf-light: #bfc492;
+  --botanical-stem: #a6a67c;
+  --botanical-vein: #e8eac1;
+  --botanical-pot: #b77760;
+  --botanical-pot-rim: #ce8d73;
+  --botanical-pot-light: #e7aa8a;
+  --botanical-soil: #573f36;
+}
+
+html { background: var(--canvas); }
+.workspace-header-actions { display: flex; align-items: center; gap: clamp(6px, 2vw, 20px); margin-inline-start: auto; }
+.header-inner .header-context { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.button.appearance-trigger {
+  gap: 7px; min-inline-size: 44px; min-block-size: 44px; padding: 0 10px;
+  background: transparent; color: var(--muted); font-size: .82rem; white-space: nowrap;
+  box-shadow: none; border-radius: 999px;
+}
+.appearance-trigger:hover { color: var(--forest); background: var(--hover); }
+.appearance-dialog {
+  position: fixed; inset: 0; margin: auto;
+  inline-size: min(24rem, calc(100% - 32px));
+  max-block-size: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 32px);
+  padding: 19px; border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 5px);
+  background: var(--paper); color: var(--ink); box-shadow: var(--shadow-lifted);
+}
+.appearance-dialog::backdrop { background: var(--overlay-shade); }
+.appearance-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-block-end: 12px; }
+.appearance-heading h2 { font: 400 1.85rem/1.12 var(--display); letter-spacing: -.04em; }
+.appearance-dialog legend { margin-block-end: 6px; font-size: .82rem; font-weight: 700; }
+.appearance-mode { margin-block-end: 16px; }
+.appearance-segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--canvas); }
+.appearance-segments span {
+  display: grid; place-items: center; min-height: 44px; border-radius: 7px;
+  color: var(--muted); font-size: .84rem; font-weight: 650; text-transform: capitalize; cursor: pointer;
+}
+.appearance-segments span:hover { background: var(--hover); }
+.appearance-segments input:checked + span { color: var(--action-ink); background: var(--forest); }
+.appearance-segments input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.appearance-options { display: grid; gap: 7px; }
+.appearance-option {
+  min-block-size: 55px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 9px; padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; background: var(--white);
+  transition: background-color var(--motion-quick) ease, border-color var(--motion-quick) ease;
+}
+.appearance-option:hover { background: var(--hover); }
+.appearance-option:has(:checked) { background: var(--selected); border-color: var(--line-control); }
+.appearance-option:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.appearance-option input { width: 16px; height: 16px; accent-color: var(--forest); }
+.appearance-option input:focus-visible { outline: none; }
+.appearance-option strong, .appearance-option small { display: block; }
+.appearance-option strong { font-size: .87rem; }
+.appearance-option small { font-size: .73rem; color: var(--muted); }
+.appearance-swatches { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }
+.appearance-swatches[data-theme="forest"] { --swatch: #23493d; --swatch-mid: #789481; --swatch-pale: #e3ebe2; }
+.appearance-swatches[data-theme="blue-hour"] { --swatch: #324e70; --swatch-mid: #778da8; --swatch-pale: #dce6f2; }
+.appearance-swatches[data-theme="warm-clay"] { --swatch: #804530; --swatch-mid: #a67761; --swatch-pale: #efded0; }
+:root[data-mode="dark"] .appearance-swatches[data-theme="forest"] { --swatch: #b5d7bd; --swatch-mid: #9db8a1; --swatch-pale: #304439; }
+:root[data-mode="dark"] .appearance-swatches[data-theme="blue-hour"] { --swatch: #bdd5f7; --swatch-mid: #9ab4d3; --swatch-pale: #33445c; }
+:root[data-mode="dark"] .appearance-swatches[data-theme="warm-clay"] { --swatch: #efbca4; --swatch-mid: #c59178; --swatch-pale: #50372d; }
+.appearance-swatches i { display: block; width: 12px; height: 22px; border-radius: 3px; background: var(--swatch-pale); }
+.appearance-swatches i:nth-child(2) { background: var(--swatch-mid); }
+.appearance-swatches i:nth-child(3) { background: var(--swatch); }
+
+@media (max-width: 767px) {
+  .header-inner .header-context { display: none; }
+  .button.appearance-trigger { width: 44px; padding: 0; }
+  .appearance-trigger > span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appearance-option { transition: none; }
+}

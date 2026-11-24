@@ -6,10 +6,11 @@
     <span class="stage-count">{{ column().tasks.length }}@if (store.isFiltering()) { of {{ column().totalCount }} }</span>
   </header>
   <div cdkDropList class="stage-list" [id]="'drop-' + column().id" [cdkDropListData]="column().id"
+    [cdkDropListAutoScrollStep]="8"
     [cdkDropListDisabled]="!store.canWrite() || store.isFiltering()" (cdkDropListDropped)="drop($event)">
     @for (task of column().tasks; track task.id) {
       <article cdkDrag class="board-card" [cdkDragData]="task.id" [cdkDragStartDelay]="dragDelay"
-        [cdkDragBoundary]="dragBounds()" [attr.data-task-id]="task.id" [attr.data-bloom-row]="task.id">
+        [cdkDragLockAxis]="dragAxis()" [attr.data-task-id]="task.id" [attr.data-bloom-row]="task.id">
         <span cdkDragHandle class="drag-handle" title="Drag task" aria-hidden="true"><app-icon name="grip" /></span>
         <app-card [task]="task" />
       </article>

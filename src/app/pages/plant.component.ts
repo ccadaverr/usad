@@ -1,15 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { createId } from '../board/board.logic';
 import { BoardStore } from '../board/board.store';
 import { GardenService, GardenState } from './garden.service';
+import {
+  COMPLETIONS_PER_LEVEL, GARDEN_STAGES, MAX_GARDEN_LEVEL, completionsUntilGrowth, gardenLevel, stemStretch, visibleFlowers,
+} from './botanical-growth';
 import type { specimen } from './specimen';
-
-const STAGES = ['Seedling', 'Small sprout', 'Developing leaves', 'Growing plant', 'Broad foliage',
-  'Branching plant', 'Mature foliage', 'Full canopy', 'Budding plant', 'In bloom'];
 
 @Component({
   selector: 'app-plant',
@@ -25,26 +25,33 @@ export class PlantComponent {
   protected readonly saving = signal(false);
   protected readonly error = signal('');
   protected readonly watered = signal(false);
-  protected readonly pendingWater = signal<string | null>(null);
+  protected readonly pendingWater = this.api.pendingWater;
   protected readonly ready = signal(false);
   protected readonly level = computed(() => this.state()?.level ?? 1);
-  protected readonly stage = computed(() => STAGES[this.level() - 1]);
-  protected readonly remaining = computed(() => this.level() === 10 ? 0 : this.level() * 5 - (this.state()?.lifetime ?? 0));
+  protected readonly stage = computed(() => GARDEN_STAGES[this.level() - 1]);
+  protected readonly remaining = computed(() => completionsUntilGrowth(this.level(), this.state()?.lifetime ?? 0));
+  protected readonly completionsPerLevel = COMPLETIONS_PER_LEVEL;
+  protected readonly flowers = computed(() => visibleFlowers(this.level()));
+  protected readonly bloomCount = computed(() => this.flowers().filter(flower => flower.blooming).length);
+  protected readonly stretch = computed(() => stemStretch(this.state()?.lifetime ?? 0));
+  protected readonly growthFrom = signal<number | null>(null);
+  protected readonly growthNotice = signal('');
+  protected readonly undoTask = this.board.undoTask;
+  protected readonly canWrite = this.board.canWrite;
+  protected readonly petals = [0, 72, 144, 216, 288];
   protected readonly layers = computed(() => Array.from({ length: this.level() }, (_, index) => index));
 
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
   private scene?: ReturnType<typeof specimen>;
   private pointer?: { id: number; x: number; y: number; locked: boolean };
   private feedbackTimer?: ReturnType<typeof setTimeout>;
+  private growthTimer?: ReturnType<typeof setTimeout>;
+  private waterAfterGrowth = false;
+  private readonly reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
   constructor() {
     this.load();
-    effect(() => {
-      const current = this.state();
-      if (current && this.scene) this.setStage(current.level);
-    });
     afterNextRender(() => {
-      const reduced = matchMedia('(prefers-reduced-motion: reduce)');
       let generation = 0;
       const fallback = () => {
         this.ready.set(false);
@@ -55,12 +62,13 @@ export class PlantComponent {
       const setup = async () => {
         const token = ++generation;
         fallback();
-        if (reduced.matches) return;
+        if (this.reduceMotion.matches) { this.growthFrom.set(null); return; }
         try {
           const { specimen } = await import('./specimen');
           if (token !== generation) return;
           this.scene = specimen(this.canvas().nativeElement, fallback);
-          if (this.state()) this.setStage(this.level());
+          const state = this.state();
+          if (state) this.scene.stage(state, this.growthFrom() ?? undefined);
           this.ready.set(true);
         } catch {
           fallback();
@@ -68,14 +76,15 @@ export class PlantComponent {
       };
       const refresh = () => { if (!document.hidden && !this.pendingWater()) this.load(); };
       void setup();
-      reduced.addEventListener('change', setup);
+      this.reduceMotion.addEventListener('change', setup);
       window.addEventListener('focus', refresh);
       this.destroy.onDestroy(() => {
         generation++;
-        reduced.removeEventListener('change', setup);
+        this.reduceMotion.removeEventListener('change', setup);
         window.removeEventListener('focus', refresh);
         fallback();
         clearTimeout(this.feedbackTimer);
+        clearTimeout(this.growthTimer);
       });
     });
   }
@@ -85,7 +94,7 @@ export class PlantComponent {
     this.loading.set(true);
     this.error.set('');
     this.api.load().pipe(takeUntilDestroyed(this.destroy), finalize(() => this.loading.set(false))).subscribe({
-      next: value => this.state.set(value),
+      next: value => this.accept(value),
       error: () => this.error.set('Could not load garden progress. Check the API connection and retry.'),
     });
   }
@@ -100,9 +109,12 @@ export class PlantComponent {
     this.watered.set(false);
     this.api.water(id).pipe(takeUntilDestroyed(this.destroy), finalize(() => this.saving.set(false))).subscribe({
       next: value => {
-        this.state.set(value);
+        this.accept(value);
         this.pendingWater.set(null);
-        this.scene?.water();
+        if (!this.reduceMotion.matches) {
+          if (this.growthFrom() === null) this.scene?.water();
+          else this.waterAfterGrowth = true;
+        }
         clearTimeout(this.feedbackTimer);
         this.watered.set(true);
         this.feedbackTimer = setTimeout(() => this.watered.set(false), 2600);
@@ -119,12 +131,32 @@ export class PlantComponent {
     });
   }
 
-  private setStage(level: number): void {
-    if (this.board.earnedGardenLevel() === level) {
-      this.scene?.stage(level - 1);
-      this.board.clearGardenMilestone();
+  protected async undoCompletion(): Promise<void> {
+    if (await this.board.undo()) {
+      this.watered.set(false);
+      this.growthNotice.set('Previous task stage restored.');
     }
-    this.scene?.stage(level);
+  }
+
+  private accept(value: GardenState): void {
+    const earned = this.board.takeGardenGrowth(value.lifetime);
+    this.state.set(value);
+    if (earned) {
+      const previousLevel = gardenLevel(value.lifetime - 1);
+      this.growthNotice.set(value.level > previousLevel
+        ? `Your plant reached level ${value.level}. ${this.stage()}.`
+        : value.level === MAX_GARDEN_LEVEL ? 'Your mature plant welcomed a new water drop.' : 'Your plant grew a little.');
+      if (!this.reduceMotion.matches) {
+        this.growthFrom.set(previousLevel);
+        clearTimeout(this.growthTimer);
+        this.growthTimer = setTimeout(() => {
+          this.growthFrom.set(null);
+          if (this.waterAfterGrowth && !this.reduceMotion.matches) this.scene?.water();
+          this.waterAfterGrowth = false;
+        }, 1000);
+      }
+    }
+    this.scene?.stage(value, earned && !this.reduceMotion.matches ? this.growthFrom() ?? undefined : undefined);
   }
 
   protected down(event: PointerEvent): void {

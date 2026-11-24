@@ -5,5 +5,5 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY data/server.cjs data/garden.cjs data/seed.mjs data/seed.json ./data/
+COPY data/server.cjs data/garden.cjs data/guest-api.cjs data/guest-storage.cjs ./data/
 CMD ["npm", "run", "api"]

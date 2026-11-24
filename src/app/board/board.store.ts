@@ -25,7 +25,7 @@ interface BoardState {
   notice: string;
   completion: CompletionReceipt | null;
   undoTask: Task | null;
-  earnedGardenLevel: number | null;
+  pendingGrowthLifetime: number | null;
 }
 
 const initialState: BoardState = {
@@ -36,7 +36,7 @@ const initialState: BoardState = {
   loading: false,
   saving: false,
   undoTask: null,
-  earnedGardenLevel: null,
+  pendingGrowthLifetime: null,
   error: '',
   notice: '',
   completion: null,
@@ -86,15 +86,16 @@ export const BoardStore = signalStore(
     const completed = new Subject<CompletionReceipt>();
     destroyRef.onDestroy(() => completed.complete());
 
-    function updateTask({ awardedLevel, earnedWater, ...task }: SavedTask): void {
+    function updateTask({ awardedLevel, earnedWater, gardenLifetime, ...task }: SavedTask): void {
       const previous = store.tasks()[task.id];
       const tasks = { ...store.tasks(), [task.id]: task };
-      if (awardedLevel) patchState(store, { earnedGardenLevel: awardedLevel });
-      if (previous && previous.status !== 'completed' && task.status === 'completed') {
+      const movedToComplete = !!previous && previous.status !== 'completed' && task.status === 'completed';
+      if (earnedWater && gardenLifetime) patchState(store, { pendingGrowthLifetime: gardenLifetime });
+      if (movedToComplete || earnedWater && task.status === 'completed') {
         const completion: CompletionReceipt = { taskId: task.id, earnedWater: earnedWater === true, gardenLevel: awardedLevel };
         // The response is confirmed. Let motion capture the visible row before the view changes.
         completed.next(completion);
-        patchState(store, { tasks, notice: 'Ayos! One task down.', undoTask: previous, completion });
+        patchState(store, { tasks, notice: 'Ayos! One task down.', undoTask: movedToComplete ? previous : null, completion });
       } else {
         patchState(store, { tasks });
       }
@@ -128,7 +129,12 @@ export const BoardStore = signalStore(
 
     return {
       completionEvents: () => completed.asObservable(),
-      clearGardenMilestone(): void { patchState(store, { earnedGardenLevel: null }); },
+      takeGardenGrowth(lifetime: number): boolean {
+        const confirmed = store.pendingGrowthLifetime();
+        if (confirmed === null || confirmed > lifetime) return false;
+        patchState(store, { pendingGrowthLifetime: null });
+        return confirmed === lifetime;
+      },
       undo(): Promise<boolean> {
         const previous = store.undoTask();
         if (!previous || store.tasks()[previous.id]?.status !== 'completed') return Promise.resolve(false);

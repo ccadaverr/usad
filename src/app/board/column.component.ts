@@ -1,4 +1,4 @@
-import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList, DragAxis } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { IconComponent } from '../shared/icon.component';
 import { ColumnView, TaskStatus } from './board.models';
@@ -16,7 +16,7 @@ export class ColumnComponent {
   protected readonly dragDelay = { mouse: 0, touch: 160 };
 
   readonly column = input.required<ColumnView>();
-  readonly dragBounds = input.required<HTMLElement>();
+  readonly dragAxis = input<DragAxis | null>(null);
 
   protected drop(event: CdkDragDrop<TaskStatus, TaskStatus, string>): void {
     if (!event.isPointerOverContainer) return;

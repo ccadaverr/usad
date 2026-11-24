@@ -1,27 +1,25 @@
 import { DeadlineComponent } from '../shared/deadline.component';
 import { SwipeRowDirective } from '../shared/swipe-row.directive';
+import { SwipeActionsComponent } from '../shared/swipe-actions.component';
 import { TaskActionsComponent } from '../shared/task-actions.component';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { localDate } from '../board/board.logic';
 import { PRIORITY_LABELS, STATUS_LABELS, Task } from '../board/board.models';
-import { BoardStore } from '../board/board.store';
 import { DialogsService } from '../shared/dialogs.service';
 import { IconComponent } from '../shared/icon.component';
 
 @Component({
   selector: 'app-task-list',
-  imports: [DeadlineComponent, SwipeRowDirective, TaskActionsComponent, DatePipe, IconComponent],
+  imports: [DeadlineComponent, SwipeRowDirective, SwipeActionsComponent, TaskActionsComponent, DatePipe, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (tasks().length) {
       <ul class="task-list">
         @for (task of tasks(); track task.id) {
-          <li class="swipe-row" [attr.data-bloom-row]="task.id" appSwipeRow #swipe="swipeRow" [allowComplete]="task.status !== 'completed' && store.canWrite()"
-            (swipeComplete)="store.move(task.id, 'completed')" (swipeEdit)="dialogs.openTask(task)">
-            <div class="swipe-feedback" aria-hidden="true">
-              <span class="swipe-edit">Edit</span><span class="swipe-complete">Complete</span>
-            </div>
+          <li class="swipe-row" [attr.data-bloom-row]="task.id" [appSwipeRow]="task.id" #swipe="swipeRow"
+            [attr.aria-busy]="swipe.saving() ? 'true' : null">
+            <app-swipe-actions [saving]="swipe.saving()" />
             <div class="action-row swipe-content">
             <button class="task-row" type="button" (click)="swipe.open($event) && dialogs.openTask(task)">
               @if (task.dueDate; as due) {
@@ -33,14 +31,14 @@ import { IconComponent } from '../shared/icon.component';
                 <span class="date-tile date-tile-blank" aria-hidden="true"><app-icon name="calendar" /></span>
               }
               <span class="task-row-copy">
-                <strong>{{ task.title }}</strong>
+                <span class="sr-only">Edit </span><strong>{{ task.title }}</strong>
                 <span>{{ task.subject }} · {{ statuses[task.status] }}</span>
                 <app-deadline [task]="task" [showDate]="false" />
               </span>
               <span class="priority task-row-priority" [attr.data-priority]="task.priority">{{ priorities[task.priority] }} priority</span>
-              <app-icon class="row-arrow" name="arrow" />
+              <app-icon class="row-arrow" name="edit" />
             </button>
-            <app-task-actions [task]="task" />
+            <app-task-actions [task]="task" [showStart]="true" />
             </div>
           </li>
         }
@@ -53,7 +51,6 @@ import { IconComponent } from '../shared/icon.component';
 export class TaskListComponent {
   readonly tasks = input.required<Task[]>();
   readonly emptyText = input.required<string>();
-  protected readonly store = inject(BoardStore);
   protected readonly dialogs = inject(DialogsService);
   protected readonly date = localDate;
   protected readonly statuses = STATUS_LABELS;

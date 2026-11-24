@@ -1,0 +1,74 @@
+<div class="entrance-frame welcome-frame">
+  <app-entry-brand />
+  <main class="welcome-layout" data-entry-main tabindex="-1">
+    <section class="welcome-copy" aria-labelledby="welcome-title">
+      <div class="welcome-intro">
+        <h1 id="welcome-title">A little <span>progress,</span><br /><em>every day.</em></h1>
+        <p>A thoughtful space for your tasks, deadlines, and everyday progress.</p>
+      </div>
+
+      @let profile = session.profile();
+      <div class="welcome-entry" [class.welcome-returning]="!!profile">
+        @if (profile) {
+          <div class="guest-identity">
+            <span class="guest-identity-icon" aria-hidden="true"><app-icon name="guest" /></span>
+            <div>
+              <p>Guest workspace</p>
+              <h2><bdi>{{ profile.displayName }}</bdi></h2>
+            </div>
+          </div>
+          <button class="btn button button-primary entry-primary" type="button" (click)="enter(profile)">
+            <span>Continue as <bdi>{{ profile.displayName }}</bdi></span><app-icon name="arrow" />
+          </button>
+        } @else if (session.status() === 'checking') {
+          <p class="welcome-session" role="status">Checking for your guest workspace…</p>
+        } @else if (session.status() === 'unavailable') {
+          <p role="alert" class="welcome-session">We couldn’t check your guest session.</p>
+          @if (session.connectionHint(); as hint) { <p class="guest-note">{{ hint }}</p> }
+          <button class="btn button button-secondary" type="button" (click)="session.refresh()">Try again</button>
+        } @else {
+          @if (expired) { <p class="welcome-session" role="status">Your guest session has expired.</p> }
+          <form novalidate (submit)="continue($event)">
+            <label for="guest-name">What should we call you?</label>
+            <input #nameField class="input field guest-field" id="guest-name" name="displayName"
+              type="text" autocomplete="given-name" placeholder="ex. Jaztin" maxlength="64" required
+              [value]="name()" [disabled]="busy()" [attr.aria-invalid]="issue() ? 'true' : null"
+              [attr.aria-describedby]="issue() ? 'guest-name-error' : null"
+              (input)="name.set(nameField.value); issue.set('')" />
+            @if (issue()) { <p class="field-error" id="guest-name-error" role="alert">{{ issue() }}</p> }
+            <button class="btn button button-primary entry-primary" type="submit" [disabled]="busy()">
+              <span>{{ busy() ? 'Opening your workspace…' : 'Continue as Guest' }}</span><app-icon name="arrow" />
+            </button>
+          </form>
+        }
+        <app-guest-actions [fromWelcome]="true" />
+        @if (requestError()) { <p class="field-error welcome-error" role="alert">{{ requestError() }}</p> }
+        <p class="guest-note">No account required. This browser’s guest session is how you return to your work.</p>
+      </div>
+
+      <aside class="student-option" aria-label="Student Account">
+        <app-icon name="home" />
+        <div>
+          <div class="student-heading"><strong>Student Account</strong><span>Coming soon</span></div>
+          <p>Personal accounts and cross-device sync are planned.</p>
+        </div>
+      </aside>
+    </section>
+
+    <div class="welcome-art" aria-hidden="true">
+      <svg viewBox="130 58 238 385" fill="none" focusable="false">
+        <ellipse cx="237" cy="424" rx="102" ry="11" fill="var(--botanical-shadow)" />
+        <path d="M165 341h149l-16 70c-25 20-92 22-119 0z" fill="var(--botanical-pot)" />
+        <path d="M176 359h32l9 63c-19-1-30-5-38-11z" fill="var(--botanical-pot-rim)" />
+        <path d="M195 380c21 7 67 8 93-1m-83 21c23 5 46 5 69 0" stroke="var(--botanical-pot-light)" stroke-opacity=".68" />
+        <path d="M155 334h169l-4 21c-37 15-125 15-161 0z" fill="var(--botanical-pot-rim)" />
+        <ellipse cx="240" cy="335" rx="84" ry="17" fill="var(--botanical-pot-light)" />
+        <ellipse cx="240" cy="335" rx="70" ry="11" fill="var(--botanical-soil)" />
+        <path d="M242 336q-5-75 7-105t10-88M242 283q-30-40-66-49m69 20q36-40 83-53m-82 80q35-12 64-6m-62-51q-9-44-39-61" stroke="var(--botanical-stem)" stroke-width="3" stroke-linecap="round" />
+        <path d="M258 153c-12-34-6-56 28-73 9 31-1 64-28 73zM261 236c15-45 49-67 94-59-13 36-48 56-94 59z" fill="var(--botanical-leaf-light)" />
+        <path d="M244 222c-38-5-70-31-69-69 39 5 61 31 69 69zM231 271c-40 1-76-8-91-47 44-9 74 10 91 47zM248 297c23-30 57-40 85-26-17 26-51 33-85 26z" fill="var(--botanical-leaf)" />
+        <path d="M260 144q11-20 18-42m-40 113q-26-34-47-49m81 63q28-23 68-42m-121 77q-28-15-66-33m106 62q25-13 59-17" stroke="var(--botanical-vein)" stroke-opacity=".76" stroke-width="1.3" />
+      </svg>
+    </div>
+  </main>
+</div>

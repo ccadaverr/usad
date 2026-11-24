@@ -30,6 +30,7 @@ yarn-error.log
 # Local task database
 /data/db.json
 /data/db.json.*.tmp
+/data/guests/
 
 # Local environment and Vercel settings
 .env
