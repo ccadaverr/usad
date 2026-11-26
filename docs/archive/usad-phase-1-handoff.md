@@ -1,5 +1,7 @@
 # USAD Phase 1 handoff
 
+> Historical record. For current setup, behavior, and hosting, see the [USAD README](../../README.md).
+
 Phase 1 establishes the shared task composer and workspace navigation for the Board and Deadlines work in Phase 2. Use the current local working tree as the starting point.
 
 ## Source baseline
@@ -58,7 +60,7 @@ Chrome 150.0.7871.125 ran against an isolated local API. Device settings covered
 
 The browser confirmed Home and Board creation, reopening a saved custom date, clearing it from Deadlines, retrying a failed write, focus containment and restoration, and Board drag/drop persistence. Touch checks confirmed Agenda swipe start and completion, Garden streak and watering, switching guests while preserving the original workspace, and swiping from the final tour slide into Home. Verification caught and resolved an invalid coarse-pointer focus target and a wrapped Edit footer at 320px.
 
-The [Chrome screenshot archive](../.playwright-mcp/usad-phase1/usad-phase1-chrome.zip) contains seven before/after comparisons and additional short-height and keyboard-inset views. Keyboard inset verification injected a smaller VisualViewport height and a nonzero offset into Chrome and exercised the real sheet and footer layout. Physical iOS and Android keyboard behavior remains unverified.
+The local Chrome evidence captured during this phase contains seven before/after comparisons and additional short-height and keyboard-inset views. Keyboard inset verification injected a smaller VisualViewport height and a nonzero offset into Chrome and exercised the real sheet and footer layout. Physical iOS and Android keyboard behavior remains unverified.
 
 The focused Angular view suite passed with 23 tests. The final full Angular suite passed with 99 tests, and the API suite passed with 18 tests. The production build, `git diff --check`, and Node syntax checks for the local API modules passed. The package has no lint script.
 

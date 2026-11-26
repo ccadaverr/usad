@@ -1,38 +1,30 @@
-# USAD coordinated frontend and API release
+# USAD release and deployment notes
 
-The local candidate includes the guest and garden v3 work and all three UI phases. The baseline is `615019ff2b245df5d8af377cfc6f3a3dca3730d1`. The Vercel production alias reported the same commit in read-only deployment metadata on November 26, 2026. The public Vercel page and its anonymous `/api/session` route returned HTTP 200. The exact Railway deployment revision could not be confirmed with the connected account. [Public frontend](https://ccadaverr-usad-blue.vercel.app/)
+## Production release · November 26, 2026
 
-## Source manifest
+The Angular frontend and garden v3 API were successfully released from commit [`dc95f2200dda9b9cc541402b7e596f5ad9382676`](https://github.com/ccadaverr/usad/commit/dc95f2200dda9b9cc541402b7e596f5ad9382676).
 
-| Owner | Files |
+| Platform | Deployment |
 | --- | --- |
-| Guest API and atomic storage | `data/guest-api.cjs`, `data/guest-storage.cjs`, `data/server.cjs` |
-| Garden ledger, streak, and API verification | `data/garden.cjs`, `data/garden.test.cjs`, `data/guest-api.test.cjs` |
-| Board task writes and confirmed garden updates | `src/app/board/board.store.ts`, `src/app/board/board.store.spec.ts`, `src/app/board/task.service.ts` |
-| Shared composer and dialog behavior | `src/app/board/card-dialog.component.html`, `src/app/board/card-dialog.component.ts`, `src/app/shared/close-dialog.ts`, `src/app/shared/dialogs.service.ts` |
-| Board picker and calendar cases | `src/app/board/board-move-dialog.component.html`, `src/app/board/board-move-dialog.component.ts`, `src/app/board/board.component.html`, `src/app/board/card.component.ts`, `src/app/board/board.logic.spec.ts` |
-| Guest setup and tutorial | `src/app/guest/entrance.css`, `src/app/guest/guest-flow.spec.ts`, `src/app/guest/guest-session.service.ts`, `src/app/guest/onboarding.component.html`, `src/app/guest/onboarding.component.ts` |
-| Watering interaction and garden state | `src/app/pages/garden.service.ts`, `src/app/pages/plant.component.ts`, `src/app/pages/plant.component.html`, `src/app/pages/plant.component.spec.ts` |
-| Botanical renderer and motion | `src/app/pages/botanical-growth.ts`, `src/app/pages/botanical-growth.spec.ts`, `src/app/pages/specimen.ts`, `src/app/pages/streak-fruit.ts`, `src/app/pages/watering-can.ts`, `src/app/pages/watering-motion.ts` |
-| Workspace, Home, Deadlines, and integration tests | `src/app/app.spec.ts`, `src/app/pages/home.component.html`, `src/app/pages/home.component.ts`, `src/app/pages/deadlines.component.ts`, `src/app/pages/task-list.component.ts`, `src/app/shared/deadline.component.ts`, `src/app/shared/icon.component.ts`, `src/app/workspace.component.html`, `src/app/workspace.component.ts`, `src/styles.css` |
-| Phase and release handoffs | `docs/usad-phase-1-handoff.md`, `docs/usad-phase-2-handoff.md`, `docs/usad-phase-3-handoff.md`, `docs/usad-coordinated-release.md` |
+| Railway API | `b7bcf06c-17e3-48fb-b189-cbd8f3827847`. The approved Docker context was uploaded before the frontend cutover. |
+| Vercel frontend | `dpl_4BKZVNHomqbjTXFoCEW2cMkhvHkj`. Vercel built the release commit after its fast-forward push to main. |
 
-## Data contract and rollout
+The release passed 116 Angular tests, 18 API tests, and the production build. A synthetic guest created before the API rollout retained its session and saved task across the cutover. Production browser verification covered creating and editing tasks, Board moves, deadlines, watering, task reversal, receipt replay, streaks, and reload.
 
-- Release the frontend and API together. The Angular candidate consumes the API's `revision`, `growth`, `activeWaterings`, `streak`, and confirmed watering receipt fields. It refreshes from the authenticated API after a confirmed reward or status correction. A local browser invalidation signal lets other tabs refresh their own authenticated state. A frontend-only release against the baseline v1 contract cannot guarantee streak, growth, or receipt animations.
-- Version 3 preserves historical entitlements and watering IDs. An entitlement is active when its task is currently Completed. Deleting a task removes the active contribution. Reusing the ID retains the original entitlement and receipt.
-- Version 1 derives the same fixed growth allowance as the prior version-2 migration. Version 2 carries its existing allowance forward. Historical receipts qualify for current growth only while their associated task is Completed. An old guest can therefore see a lower level or fewer available drops if previously counted tasks are now inactive. Their receipts remain in the ledger.
-- Legacy workspaces without a calendar timezone use UTC. New guest setup records a validated IANA timezone once. Only first completions accepted by the server after the migration can enter streak history.
-- Normal authenticated reads calculate migrated state in memory. The next successful workspace mutation persists it through the existing atomic JSON replacement. Signing keys and cookie configuration require no changes.
-- Version 1 and version 2 readers cannot open version-3 ledgers. Any rollback build must retain the version-3 reader and preserve the saved history. Verify the packaged API and frontend together with disposable fixtures before the release window.
+**Recovery limitation.** There is currently no independently verified recoverable production guest-volume backup. At release time Railway listed no snapshots, and an attempted volume download stopped at SSH authentication before transferring files. The release proceeded with that recovery risk accepted.
 
-## Proposed rollout
+## Hosting configuration
 
-1. Review the manifest and build both services from the same reviewed revision. Confirm the Railway production service and Git revision with the project owner. Exercise the pair on a separate staging volume with disposable v1, v2, and v3 guest fixtures. Verify session continuity, same-ID replay, reversal, and restart.
-2. Take and verify a recoverable backup of the production guest volume, including the existing session signing key. Keep that key, the mounted guest path, the public frontend hostname, cookie scope, and single-writer setup. Prepare a rollback API artifact that can read and preserve v3.
-3. Switch the one Railway writer to the v3 API first. Avoid concurrent v1/v2 and v3 writers on the same volume. Check the forwarded session route and v3 Garden contract using an authorized release smoke workspace. Then promote the matching Vercel frontend in the same window. During the brief API-first interval, old tabs can read the overlapping fields but may still describe growth in terms of completed tasks. Ask affected users to refresh once the paired frontend is live.
-4. Verify the paired endpoints and monitor session, migration, and watering errors. If the frontend needs a rollback, use a UI that understands the v3 response. Keep a v3-capable API on any volume that has accepted v3 writes. Treat restoration of a pre-release volume snapshot as separate recovery because it can discard writes accepted after the snapshot.
+- **Vercel** builds the Angular app. The checked-in rewrite forwards `/api/:path*` to the production Railway API and falls back to `index.html` for SPA routes.
+- **Railway** builds [`Dockerfile.railway`](../Dockerfile.railway) at the repo root with Node.js 22 and starts `npm run api` using the platform’s `PORT`. The production service has one writer on the volume mounted at `/data`.
+- **Storage and origin** use `USAD_GUEST_DIR=/data/guests`. `USAD_ALLOWED_ORIGINS` is a comma-separated list of exact allowed HTTPS origins, including `https://ccadaverr-usad-blue.vercel.app`. Guest files and their signing key must stay together across restarts and releases.
+- **Preview isolation** requires a separate API, volume and signing key, plus an explicitly replaced Vercel API rewrite. Verify the deployed routing before writing any test data through a preview.
 
-## Local verification
+## Compatibility and rollout
 
-The [Phase 3 handoff](usad-phase-3-handoff.md) records the final test results and inspected browser evidence. Build prerequisites and production hosting configuration use the existing repository setup.
+1. Verify the existing production volume and record the running deployment IDs. Before changing the API or its data format, verify a recoverable backup of the actual guest directory, including its signing key. Use disposable staging fixtures to rehearse migration, persistence, and restoration.
+2. Roll out the compatible Railway API first on the same production mount with one writer. Verify an existing authorized smoke session and the v3 garden response through the public frontend origin before allowing Vercel to serve the matching frontend. Confirm automatic Git triggers for both hosts before pushing or promoting.
+3. The v3 frontend depends on the API’s revision, active waterings, growth, streak, and confirmed receipt fields. An older frontend can use the overlapping contract during the short API-first interval. The v3 reader supports v1 and v2 on disk and preserves historical receipts.
+4. Once the volume has v3 writes, use a v3-capable API for rollback or forward recovery. A code rollback keeps the current data volume. Restoring an earlier copy is a separate recovery decision that can discard later writes.
+
+[Guest API and ledger details](GUEST-EXPERIENCE.md) · [Historical handoffs](archive/README.md)

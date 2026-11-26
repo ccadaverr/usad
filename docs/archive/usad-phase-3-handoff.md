@@ -1,5 +1,7 @@
 # USAD Phase 3 and final acceptance
 
+> Historical record. For current setup, behavior, and hosting, see the [USAD README](../../README.md).
+
 ## Baseline and scope
 
 Phase 3 began on `feature/usad-development` at `615019ff2b245df5d8af377cfc6f3a3dca3730d1`. The starting tree had 37 modified tracked files, nine untracked files, an empty index, and no deletions. All 46 starting files remain present. Thirty-five match the starting snapshot byte for byte. The other eleven contain targeted Phase 3 edits. The actual pre-edit suites passed with 109 Angular tests and 18 API tests.
@@ -12,7 +14,7 @@ The original Chrome view devoted space to Back to Progress, repeated reward inst
 - One procedural Three.js group stays visible at rest and during the pour. The renderer maps the DOM control center into the current orthographic camera. After confirmation, the group rises to the right, tilts, emits spout-aligned droplets, and returns upright to the same screen anchor. Soil impacts initiate the stem, leaf, branch, bud, and flower transitions. The existing sequence lasts 2,480ms. The SVG fallback uses one persistent can group and the same timing.
 - Plant rotation has its own focusable slider with horizontal drag and arrow keys. Vertical touch movement can scroll the page. The can sits outside the plant pivot and has the native button click path for mouse, touch, Enter, and Space. Watering leaves the rotation angle intact.
 - The Three.js scene draws on demand. It caps DPR at 1.5, pauses draws offscreen or in a hidden tab, and disposes meshes, materials, textures, watchers, and listeners. The SVG stays visible until the first successful WebGL frame. Reduced motion presents the confirmed final illustration immediately.
-- Streaks and full counts stay server-authoritative. Fruit positions use the existing attachment logic and four-fruit render cap. A streak-only revision reconciles the fruit without replaying the watering sequence. The release keeps the v3 reader, v1/v2 migration, existing signed guest sessions, same-ID watering receipts, and reversible entitlements. See the [release manifest and coordinated rollout](usad-coordinated-release.md).
+- Streaks and full counts stay server-authoritative. Fruit positions use the existing attachment logic and four-fruit render cap. A streak-only revision reconciles the fruit without replaying the watering sequence. The release keeps the v3 reader, v1/v2 migration, existing signed guest sessions, same-ID watering receipts, and reversible entitlements. See the [current release record](../usad-coordinated-release.md).
 
 ## Final verification
 
@@ -28,11 +30,11 @@ Installed Chrome 150.0.7871.125 checked WebGL and the can at 320×420, 375×568,
 
 - Garden browser checks confirmed `×2 → ×1 → ×0`, no empty spend, pointer and keyboard isolation, wraparound rotation, stable orientation through watering, the upright return anchor, fallback droplets and ripples, and reduced-motion final state. The tests exercised 503 rejection, a committed write with a lost response, same-ID replay, and navigation and refresh during animation. A local historical fixture verified four rendered fruits, a mature specimen at 320px, and spent-growth and streak reversal. Visual inspection caught and resolved the low-height tablet fit issue and the pot occluding the can during its return. An automated regression covers the second click after a fast reduced-motion confirmation.
 - Cross-screen Chrome acceptance covered guest setup and switching, all three onboarding slides, the last-slide swipe, Home and its first task and Agenda swipe, composer date and priority handling, cancellation, failure recovery, and simulated visual-viewport keyboard insets. It also covered all six Board moves, cross-tab deletion, filtering, reordering, drag/drop, Deadlines edits and date boundaries, Progress percentages, Appearance, and guest confirmation. The onboarding copy now points to the can.
-- The [Chrome evidence archive](../.playwright-mcp/usad-phase3/usad-phase3-chrome.zip) contains inspected baseline, mobile, desktop, short viewport, lift, pour, impact, return, level transition, mature fruit, fallback, palette, error, and cross-screen images.
+- The local Chrome evidence captured during this phase contains inspected baseline, mobile, desktop, short viewport, lift, pour, impact, return, level transition, mature fruit, fallback, palette, error, and cross-screen images.
 
 ## Release assessment
 
-The local candidate passes acceptance and is ready for a coordinated staging rehearsal and project-manager review. Production promotion depends on confirmation of the running Railway revision, a recoverable volume and signing-key backup, and a paired staging rehearsal. The [coordinated release manifest](usad-coordinated-release.md) enumerates all 47 accumulated paths. The working tree and index remain local.
+The local candidate passes acceptance and is ready for a coordinated staging rehearsal and project-manager review. Production promotion depends on confirmation of the running Railway revision, a recoverable volume and signing-key backup, and a paired staging rehearsal. The release manifest at the time enumerated 47 accumulated paths. The working tree and index remain local.
 
 ## Phase 3 files
 
