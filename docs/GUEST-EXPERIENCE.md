@@ -13,8 +13,9 @@ Browser paths are shown with their `/api` prefix. The development proxy and Verc
 | `POST /api/tasks`, `PATCH /api/tasks/:id`, `DELETE /api/tasks/:id` | Create, update, or delete a task in the current workspace. Status and order changes use the same update route. |
 | `GET /api/garden` | Returns `revision`, `lifetime`, `waterings`, `activeWaterings`, `growth`, `level`, `available`, and `streak`. Also returns the opaque `X-USAD-Garden-Scope` used for retries. |
 | `POST /api/garden/water` | Takes a stable watering operation `id`, consumes one eligible credit, and returns the garden snapshot plus `wateringNumber` and `wateringRevision`. The same ID replays its existing receipt. |
+| `GET /api/workspace/export` | Downloads a private, versioned JSON snapshot of the current guest’s tasks and garden. See the [export and recovery contract](recovery/export-contract.md). |
 
-The task, onboarding, and garden endpoints require a valid guest workspace. Writes require an exact allowed frontend origin, and responses are private and uncached. The ticket is host-only, HttpOnly, SameSite=Lax, scoped to `/api`, and valid for 30 days from issue. Hosted cookies use the `__Secure-usad_guest` name and Secure flag. A display name is a label and cannot recover the session.
+The task, onboarding, garden, and export endpoints require a valid guest workspace. Writes require an exact allowed frontend origin, and responses are private and uncached. The ticket is host-only, HttpOnly, SameSite=Lax, scoped to `/api`, and valid for 30 days from issue. Hosted cookies use the `__Secure-usad_guest` name and Secure flag. A display name is a label and cannot recover the session.
 
 The server hashes the signed ticket to identify the corresponding workspace file. Starting another guest clears the active browser session and creates a separate workspace. The existing workspace remains on disk and the original ticket retains its expiry. Appearance palette and display mode are saved in browser storage independently of the guest’s tasks and garden.
 
