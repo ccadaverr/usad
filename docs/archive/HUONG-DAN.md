@@ -1,5 +1,7 @@
 # TaskFlow — Hướng dẫn chạy, test, đưa lên GitHub và deploy
 
+> Historical record. For current setup, behavior, and hosting, see the [USAD README](../../README.md).
+
 ## 1. Chạy trên máy
 
 Không cần Firebase hay API. Mở terminal trong thư mục `taskflow`:

@@ -1,5 +1,7 @@
 # USAD Phase 2 handoff
 
+> Historical record. For current setup, behavior, and hosting, see the [USAD README](../../README.md).
+
 Phase 2 covers Board workflow and Deadlines. Continue from this local working tree for Phase 3.
 
 ## Source baseline
@@ -37,7 +39,7 @@ The starting branch was `feature/usad-development`, tracking `usad/staging/guest
 - Deadline checks covered editing dates and statuses, completion, local date grouping at DST and year boundaries, and long titles and empty lanes. Home Agenda’s before and after PNGs are byte-identical. The shared composer still opens from Board and Deadlines.
 - Visual review caught a clipped lane border at 320×420, a redundant create action on empty Deadlines, and an edit affordance hidden by a shared narrow-width rule. The final rendered states resolve all three. Touch was exercised through Chrome device emulation. Physical handsets were outside this run.
 
-The [Chrome evidence archive](../.playwright-mcp/usad-phase2/usad-phase2-chrome.zip) contains five baseline views and 11 inspected final screenshots, including the two dark-mode views.
+The local Chrome evidence captured during this phase contains five baseline views and 11 inspected final screenshots, including the two dark-mode views.
 
 ## Files changed
 
