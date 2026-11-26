@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type IconName = 'home' | 'board' | 'calendar' | 'progress' | 'plus' | 'arrow' | 'search' | 'grip' | 'close' | 'check' | 'warning' | 'chevron' | 'list' | 'sprout' | 'appearance' | 'filter' | 'edit' | 'guest' | 'drop';
+export type IconName = 'home' | 'board' | 'calendar' | 'progress' | 'plus' | 'arrow' | 'search' | 'grip' | 'close' | 'check' | 'warning' | 'chevron' | 'list' | 'sprout' | 'appearance' | 'filter' | 'edit' | 'guest' | 'drop' | 'download';
 export type NavigationIconName = 'kubo' | 'banig' | 'nav-calendar' | 'nav-progress' | 'nav-sprout';
 
 @Component({
@@ -26,6 +26,7 @@ export type NavigationIconName = 'kubo' | 'banig' | 'nav-calendar' | 'nav-progre
         @case ('sprout') { <path d="M7 21h10m-5 0v-7m0 2c0-5-3-8-8-8 0 5 3 8 8 8Zm0-3c0-5 3-9 8-9 0 5-3 9-8 9Z" /> }
         @case ('plus') { <path d="M12 5v14M5 12h14" /> }
         @case ('arrow') { <path d="M4 12h15m-6-6 6 6-6 6" /> }
+        @case ('download') { <path d="M12 3.5v11m-4-4 4 4 4-4M5 16v3.5h14V16" /> }
         @case ('search') { <circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4.5 4.5" /> }
         @case ('filter') { <path d="M4 7h9m4 0h3M4 17h3m4 0h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /> }
         @case ('guest') { <circle cx="12" cy="8" r="3.1" /><path d="M5.5 20v-1.4a6.5 6.5 0 0 1 13 0V20" /> }

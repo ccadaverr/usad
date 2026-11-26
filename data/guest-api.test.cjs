@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const { createHash } = require('node:crypto');
+const { createHash, createHmac } = require('node:crypto');
 const { once } = require('node:events');
 const { mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
@@ -18,6 +18,12 @@ const task = {
   id: 'first-task', title: 'Finish field notes', subject: 'Research', description: '', dueDate: '2026-11-27',
   priority: 'medium', status: 'pending', order: 'a0', createdAt: '2026-11-24T04:00:00.000Z', updatedAt: '2026-11-24T04:00:00.000Z',
 };
+const exportPath = '/workspace/export';
+
+function workspaceFile(directory, cookie) {
+  const key = createHash('sha256').update(cookie.split('=')[1]).digest('hex');
+  return join(directory, key + '.json');
+}
 
 async function setup(context, options = {}) {
   const root = mkdtempSync(join(tmpdir(), 'usad-guest-test-'));
@@ -70,6 +76,139 @@ async function setup(context, options = {}) {
   }
   return { request, post, bootstrap, guest, restart, directory, legacy, upstream: base };
 }
+
+test('export signs the complete private snapshot and excludes authentication and server metadata', async context => {
+  const time = Date.parse('2026-11-26T18:00:00.000Z');
+  const { guest, post, request, directory, restart } = await setup(context, { now: () => time });
+  const cookie = await guest('Backup Student', 'Asia/Manila');
+  const completed = { ...task, status: 'completed', description: 'Private field notes.', order: 'a03' };
+  await post('/tasks', cookie, completed);
+  const removed = { ...completed, id: 'removed' };
+  await post('/tasks', cookie, removed);
+  const wateringId = 'export-watering-0001';
+  await post('/garden/water', cookie, { id: wateringId });
+  await request('/tasks/removed', { method: 'DELETE', cookie });
+  const file = workspaceFile(directory, cookie);
+  const saved = JSON.parse(readFileSync(file));
+  // A future internal field at any level must not enter the public format by default.
+  const privateMarker = 'server-only-marker';
+  saved.internal = privateMarker;
+  saved.profile.internal = privateMarker;
+  saved.tasks[0].internal = privateMarker;
+  saved.garden.internal = privateMarker;
+  saved.garden.entries[0].internal = privateMarker;
+  writeFileSync(file, JSON.stringify(saved));
+  const before = readFileSync(file);
+
+  const result = await request(exportPath, { cookie, from: null, headers: { 'If-None-Match': '*' } });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get('content-type'), 'application/json; charset=utf-8');
+  assert.equal(result.headers.get('content-disposition'), 'attachment; filename="usad-workspace-2026-11-26.json"');
+  assert.equal(result.headers.get('content-length'), String(Buffer.byteLength(JSON.stringify(result.body) + '\n')));
+  assert.equal(result.headers.get('cache-control'), 'private, no-store');
+  assert.equal(result.headers.get('cdn-cache-control'), 'no-store');
+  assert.equal(result.headers.get('vercel-cdn-cache-control'), 'no-store');
+  assert.equal(result.headers.get('cross-origin-resource-policy'), 'same-origin');
+  assert.equal(result.headers.get('set-cookie'), null);
+  const { integrity, ...payload } = result.body;
+  const { sourceId } = payload.provenance;
+  assert.match(sourceId, /^[A-Za-z0-9_-]{43}$/);
+  assert.deepEqual(payload, {
+    format: 'usad-workspace', schemaVersion: 1, exportedAt: '2026-11-26T18:00:00.000Z',
+    appVersion: require('../package.json').version,
+    timeZone: 'Asia/Manila', tasks: [completed],
+    garden: {
+      version: 3, revision: 4, legacyWaterings: 0, entries: [
+        { taskId: task.id, firstCompletedAt: '2026-11-26T18:00:00.000Z', completionDay: '2026-11-27',
+          wateringId, wateringNumber: 1, wateringRevision: 3 },
+        { taskId: removed.id, firstCompletedAt: '2026-11-26T18:00:00.000Z', completionDay: '2026-11-27' },
+      ],
+    },
+    provenance: { sourceId },
+  });
+  const sessionKey = readFileSync(join(directory, '.session-key'));
+  const proofKey = createHmac('sha256', sessionKey).update('usad:workspace-export:proof:v1').digest();
+  const digest = value => createHmac('sha256', proofKey).update(JSON.stringify(value)).digest('base64url');
+  assert.deepEqual(integrity, { algorithm: 'HMAC-SHA-256', digest: digest(payload) });
+  const tampered = structuredClone(payload);
+  tampered.garden.entries[0].wateringId = 'forged-watering-0001';
+  assert.notEqual(integrity.digest, digest(tampered));
+  const output = JSON.stringify(result.body);
+  for (const secret of [cookie, cookie.split('=')[1], sessionKey.toString('hex'), sessionKey.toString('base64url'),
+    file, privateMarker, 'expiresAt', 'Backup Student']) {
+    assert.equal(output.includes(secret), false);
+  }
+  await restart();
+  assert.deepEqual((await request(exportPath, { cookie })).body, result.body);
+  assert.deepEqual(readFileSync(file), before);
+});
+
+test('export requires a live workspace and ignores guest selectors supplied by callers', async context => {
+  let time = Date.now();
+  const { bootstrap, guest, request, post, directory } = await setup(context, { now: () => time });
+  const a = await guest('First Guest');
+  const b = await guest('Second Guest');
+  const otherTask = { ...task, id: 'other-task', status: 'completed' };
+  await post('/tasks', a, task);
+  await post('/tasks', b, otherTask);
+
+  const unsigned = (await bootstrap()).split(';')[0];
+  for (const cookie of [undefined, unsigned, a + '; ' + b, a.slice(0, -1) + (a.endsWith('a') ? 'b' : 'a')]) {
+    const denied = await request(exportPath, { cookie });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.headers.get('content-disposition'), null);
+  }
+  const aExport = await request(exportPath + '?workspace=' + workspaceFile(directory, b), { cookie: a });
+  const bExport = await request(exportPath, { cookie: b });
+  assert.deepEqual(aExport.body.tasks, [task]);
+  assert.deepEqual(aExport.body.garden.entries, []);
+  assert.deepEqual(bExport.body.tasks, [otherTask]);
+  assert.equal(bExport.body.garden.entries[0].taskId, otherTask.id);
+  assert.notEqual(aExport.body.provenance.sourceId, bExport.body.provenance.sourceId);
+  time += SESSION_MS;
+  assert.equal((await request(exportPath, { cookie: a })).status, 401);
+});
+
+test('export fails closed when storage is unreadable or oversized', async context => {
+  const { guest, request, directory } = await setup(context);
+  const cookie = await guest('Backup Student');
+  const file = workspaceFile(directory, cookie);
+  for (const content of ['invalid JSON', Buffer.alloc(2 * 1024 * 1024 + 1)]) {
+    writeFileSync(file, content);
+    const result = await request(exportPath, { cookie });
+    assert.equal(result.status, 503);
+    assert.equal(result.headers.get('content-disposition'), null);
+    assert.deepEqual(result.body, { message: 'Could not access guest storage. Please try again.' });
+    assert.deepEqual(readFileSync(file), Buffer.from(content));
+  }
+});
+
+test('exports racing completion, watering and undo contain whole committed revisions', async context => {
+  const { guest, post, request } = await setup(context);
+  const cookie = await guest('Backup Student');
+  await post('/tasks', cookie, task);
+  const read = () => request(exportPath, { cookie });
+  const move = status => request('/tasks/' + task.id, { cookie, method: 'PATCH', body: { status } });
+  const wateringId = 'racing-watering-0001';
+  const exports = [await read()];
+  for (const write of [() => move('completed'), () => post('/garden/water', cookie, { id: wateringId }), () => move('pending')]) {
+    const [before, after, saved] = await Promise.all([read(), read(), write()]);
+    assert.equal(saved.status, 200);
+    exports.push(before, after, await read());
+  }
+  const expected = [
+    { status: 'pending', entries: 0, watered: undefined },
+    { status: 'completed', entries: 1, watered: undefined },
+    { status: 'completed', entries: 1, watered: wateringId },
+    { status: 'pending', entries: 1, watered: wateringId },
+  ];
+  for (const result of exports) {
+    assert.equal(result.status, 200);
+    const { tasks, garden } = result.body;
+    assert.deepEqual({ status: tasks[0].status, entries: garden.entries.length, watered: garden.entries[0]?.wateringId },
+      expected[garden.revision]);
+  }
+});
 
 test('workspace profile, tasks, garden and watering are isolated and durable', async context => {
   const { bootstrap, guest, request, post, restart, directory } = await setup(context);
@@ -383,6 +522,9 @@ test('version-1 guest ledgers keep their growth, credits and receipts after one 
   await restart();
   const expected = { lifetime: 6, waterings: 1, growth: 6, level: 4, available: 5, streak: 0 };
   assertGarden((await request('/garden', { cookie })).body, expected);
+  const backup = (await request(exportPath, { cookie })).body;
+  assert.deepEqual(backup.garden, { version: 3, revision: 0, legacyWaterings: 5, entries: snapshot.garden.entries });
+  assert.deepEqual(backup.tasks, snapshot.tasks);
   assertGarden((await post('/garden/water', cookie, { id: watering })).body, { ...expected, wateringNumber: null });
   assert.equal(readFileSync(file, 'utf8'), original);
   const completion = await post('/tasks', cookie, { ...task, status: 'completed' });
@@ -491,6 +633,9 @@ test('version-2 migration keeps receipts and fixed allowance without dating lega
   assertGarden((await request('/garden', { cookie })).body, {
     revision: 0, lifetime: 2, waterings: 2, activeWaterings: 1, growth: 5, available: 0, streak: 0,
   });
+  const backup = (await request(exportPath, { cookie })).body;
+  assert.equal(backup.timeZone, 'UTC');
+  assert.deepEqual(backup.garden, { ...snapshot.garden, version: 3, revision: 0 });
   const retry = await post('/garden/water', cookie, { id: 'previous-watering-2' });
   assertGarden(retry.body, { wateringNumber: 2, wateringRevision: null, available: 0 });
   assert.equal(readFileSync(file, 'utf8'), bytes);

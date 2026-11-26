@@ -4,7 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { NavigationEnd, Router, provideRouter } from '@angular/router';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, fromEvent } from 'rxjs';
 import { App } from '../app';
 import { routes } from '../app.routes';
 import { Task } from '../board/board.models';
@@ -69,11 +69,28 @@ describe('Guest routing and first use', () => {
   }
 
   function confirmStart() {
-    click(view.querySelector<HTMLButtonElement>('.guest-switch-action, .guest-menu button')!);
+    click(view.querySelector<HTMLButtonElement>('.guest-switch-action, .guest-start-action')!);
     fixture.detectChanges();
-    const dialog = view.querySelector<HTMLDialogElement>('.guest-confirm')!;
+    const dialog = view.querySelector<HTMLDialogElement>('[aria-labelledby="guest-confirm-title"]')!;
     expect(dialog.open).toBeTrue();
     return dialog;
+  }
+
+  async function openWorkspaceExport() {
+    const navigation = start('/home');
+    (await pending('/api/session')).flush({ guest: { ...guest, onboardingComplete: true } });
+    await navigation;
+    (await pending('/api/tasks')).flush([]);
+    await settled();
+    const trigger = view.querySelector<HTMLButtonElement>('.guest-menu-trigger')!;
+    click(trigger);
+    click(view.querySelector<HTMLButtonElement>('.guest-menu button[aria-haspopup="dialog"]')!);
+    fixture.detectChanges();
+    const dialog = view.querySelector<HTMLDialogElement>('dialog[aria-labelledby="guest-export-title"]')!;
+    const download = dialog.querySelector<HTMLButtonElement>('button[type="button"]')!;
+    const close = dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const status = dialog.querySelector('[role="status"]')!;
+    return { trigger, dialog, download, close, status };
   }
 
   function tourGesture() {
@@ -308,6 +325,66 @@ describe('Guest routing and first use', () => {
     expect(router.url).toContain('expired=1');
     expect(view.querySelector('nav')).toBeNull();
     expect(view.textContent).toContain('Your guest session has expired.');
+  });
+
+  it('downloads the authenticated backup once while repeated clicks are pending', async () => {
+    const { download, status } = await openWorkspaceExport();
+    const blob = new Blob(['{"format":"usad-workspace","schemaVersion":1}'], { type: 'application/json' });
+    const objectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:fixture');
+    let savedLink: HTMLAnchorElement | undefined;
+    spyOn(HTMLAnchorElement.prototype, 'click').and.callFake(function (this: HTMLAnchorElement) { savedLink = this; });
+    click(download);
+    click(download);
+    fixture.detectChanges();
+    expect(status.textContent).toContain('Preparing');
+    expect(download.getAttribute('aria-disabled')).toBe('true');
+    const request = http.expectOne('/api/workspace/export');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.responseType).toBe('blob');
+    request.flush(blob, { headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="usad-workspace-2026-11-26.json"',
+    } });
+    await settled();
+    expect(objectUrl).toHaveBeenCalledOnceWith(blob);
+    expect(savedLink?.download).toBe('usad-workspace-2026-11-26.json');
+    expect(savedLink?.href).toBe('blob:fixture');
+    expect(savedLink?.isConnected).toBeFalse();
+    expect(status.textContent).toContain('Download started');
+    expect(download.hasAttribute('aria-disabled')).toBeFalse();
+  });
+
+  it('offers retry after a network error and rejects an unexpected HTML response', async () => {
+    const { download, status } = await openWorkspaceExport();
+    const objectUrl = spyOn(URL, 'createObjectURL');
+    click(download);
+    http.expectOne('/api/workspace/export').error(new ProgressEvent('error'));
+    await settled();
+    expect(status.textContent).toContain('couldn’t download');
+    expect(download.textContent).toContain('Try again');
+    click(download);
+    http.expectOne('/api/workspace/export').flush(new Blob(['<html>broken</html>'], { type: 'text/html' }), {
+      headers: { 'Content-Type': 'text/html' },
+    });
+    await settled();
+    expect(status.textContent).toContain('couldn’t download');
+    expect(objectUrl).not.toHaveBeenCalled();
+  });
+
+  it('labels the export dialog, restores focus and cancels a pending request on close', async () => {
+    const { trigger, dialog, download, close } = await openWorkspaceExport();
+    expect(dialog.open).toBeTrue();
+    expect(dialog.getAttribute('aria-describedby')).toBe('guest-export-copy');
+    expect(document.activeElement).toBe(dialog.querySelector('h2'));
+    expect(dialog.textContent).toContain('private coursework');
+    click(download);
+    const request = http.expectOne('/api/workspace/export');
+    const closed = firstValueFrom(fromEvent(dialog, 'close'));
+    click(close);
+    await closed;
+    expect(request.cancelled).toBeTrue();
+    expect(dialog.open).toBeFalse();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('follows horizontal drags, snaps back on cancellation and supports keyboard navigation', async () => {

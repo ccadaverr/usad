@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "feature/usad-p00a-workspace-export": false
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",

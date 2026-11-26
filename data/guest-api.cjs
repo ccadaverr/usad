@@ -191,6 +191,16 @@ function createGuestApp(directory, {
     response.json({ guest: publicProfile(workspace) });
   });
 
+  app.get('/workspace/export', requireWorkspace, (_request, response) => {
+    const { bytes, filename } = storage.exportWorkspace(response.locals.session, response.locals.workspace);
+    response.set({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(bytes.length),
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    }).end(bytes);
+  });
+
   function findTask(request, response, next) {
     const workspace = response.locals.workspace;
     const index = workspace.tasks.findIndex(task => task.id === request.params.id);

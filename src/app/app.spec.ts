@@ -469,7 +469,7 @@ describe('USAD views', () => {
     expect(view.querySelector('.feedback-copy')?.textContent).toContain('Ayos! One task down.');
     expect(view.querySelector('.bloom-reward')?.textContent).toContain('+1 water drop earned');
     expect(view.querySelectorAll('.reward-droplet').length).toBe(1);
-    expect(view.querySelector('[role="status"]')?.textContent).toContain('+1 water drop earned');
+    expect(view.querySelector('main > [role="status"]')?.textContent).toContain('+1 water drop earned');
     store.load();
     http.expectOne('/api/tasks').flush([{ ...task, status: 'completed' }]);
     fixture.detectChanges();
@@ -489,7 +489,7 @@ describe('USAD views', () => {
     expect(view.querySelector('app-usad-bloom')).toBeNull();
     expect(view.querySelector('.bloom-animated')).toBeNull();
     expect(view.querySelector('.bloom-reward')).toBeNull();
-    expect(view.querySelector('[role="status"]')?.textContent).toContain('Ayos! One task down.');
+    expect(view.querySelector('main > [role="status"]')?.textContent).toContain('Ayos! One task down.');
   });
 
   it('does not render Bloom after a failed task write', async () => {
