@@ -142,6 +142,10 @@ export class GuestSession {
     this.profileState.set(response.guest);
   }
 
+  exportWorkspace() {
+    return this.http.get('/api/workspace/export', { timeout: 30_000, observe: 'response', responseType: 'blob' });
+  }
+
   expire(): void {
     this.profileState.set(null);
     this.statusState.set('ready');
