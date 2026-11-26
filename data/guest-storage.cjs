@@ -5,10 +5,45 @@ const {
   readdirSync, realpathSync, renameSync, rmSync, writeFileSync,
 } = require('node:fs');
 const { join, resolve } = require('node:path');
+const { version: appVersion } = require('../package.json');
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_WORKSPACE_BYTES = 2 * 1024 * 1024;
+const MAX_EXPORT_BYTES = MAX_WORKSPACE_BYTES + 1024;
 const WORKSPACE_NAME = /^[a-f0-9]{64}\.json$/;
+const TASK_EXPORT_FIELDS = ['id', 'title', 'subject', 'description', 'priority', 'status', 'dueDate', 'order', 'createdAt', 'updatedAt'];
+const ENTRY_EXPORT_FIELDS = ['taskId', 'firstCompletedAt', 'completionDay', 'wateringId', 'wateringNumber', 'wateringRevision'];
+
+function project(record, fields) {
+  return Object.fromEntries(fields.map(field => [field, record[field]]));
+}
+
+// Field order is part of the v1 signature encoding. See docs/recovery/export-contract.md.
+function encodeExport(snapshot, time, sourceId, proofKey) {
+  const { profile, tasks, garden } = snapshot;
+  const exportedAt = new Date(time).toISOString();
+  const payload = {
+    format: 'usad-workspace',
+    schemaVersion: 1,
+    exportedAt,
+    appVersion,
+    timeZone: profile.timeZone,
+    tasks: tasks.map(task => project(task, TASK_EXPORT_FIELDS)),
+    garden: {
+      version: garden.version,
+      revision: garden.revision,
+      legacyWaterings: garden.legacyWaterings,
+      entries: garden.entries.map(entry => project(entry, ENTRY_EXPORT_FIELDS)),
+    },
+    provenance: { sourceId },
+  };
+  const json = JSON.stringify(payload);
+  const digest = createHmac('sha256', proofKey).update(json).digest('base64url');
+  const integrity = { algorithm: 'HMAC-SHA-256', digest };
+  const bytes = Buffer.from(json.slice(0, -1) + ',"integrity":' + JSON.stringify(integrity) + '}\n');
+  if (bytes.length > MAX_EXPORT_BYTES) throw new Error('Workspace export exceeds its size limit.');
+  return { bytes, filename: `usad-workspace-${exportedAt.slice(0, 10)}.json` };
+}
 
 function readPrivateFile(file, size) {
   let fd;
@@ -64,6 +99,13 @@ function guestStorage(directory, { now = Date.now, maxGuests = 1500, persist = r
   }
   if (key.length !== 32) throw new Error('Invalid guest signing key.');
   const sign = (bytes) => createHmac('sha256', key).update(bytes).digest();
+  const proofKey = sign('usad:workspace-export:proof:v1');
+  const sourceKey = sign('usad:workspace-export:source:v1');
+
+  function exportWorkspace(session, snapshot) {
+    const sourceId = createHmac('sha256', sourceKey).update(session.key).digest('base64url');
+    return encodeExport(snapshot, now(), sourceId, proofKey);
+  }
 
   function issue() {
     const ticket = randomBytes(40);
@@ -109,7 +151,7 @@ function guestStorage(directory, { now = Date.now, maxGuests = 1500, persist = r
     return ids.length < maxGuests;
   }
 
-  return { issue, verify, load, save, hasCapacity };
+  return { issue, verify, load, save, hasCapacity, exportWorkspace };
 }
 
 module.exports = { guestStorage, SESSION_MS };
