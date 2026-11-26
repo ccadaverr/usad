@@ -7,7 +7,7 @@ import { BoardStore } from './board/board.store';
 import { CompletionMotion } from './shared/completion-motion';
 import { UsadBloomComponent } from './shared/usad-bloom.component';
 import { DialogsService } from './shared/dialogs.service';
-import { IconComponent, IconName } from './shared/icon.component';
+import { IconComponent, NavigationIconName } from './shared/icon.component';
 import { GuestActionsComponent } from './guest/guest-actions.component';
 import { GardenService } from './pages/garden.service';
 import { HOME_PREVIEW, HOME_REVEAL, HomeComponent } from './pages/home.component';
@@ -28,12 +28,12 @@ export class WorkspaceComponent {
   private readonly router = inject(Router);
   protected readonly arrivingHome = this.router.currentNavigation()?.extras.info === HOME_REVEAL;
   protected readonly pageTitle = signal('Home');
-  protected readonly links: { path: string; name: string; icon: IconName; accessibleName?: string }[] = [
-    { path: '/home', name: 'Home', icon: 'home' },
-    { path: '/board', name: 'Board', icon: 'board' },
-    { path: '/deadlines', name: 'Deadlines', icon: 'calendar' },
-    { path: '/progress', name: 'Progress', icon: 'progress' },
-    { path: '/garden', name: 'Tanim', icon: 'sprout', accessibleName: 'Munting Tanim' },
+  protected readonly links: { path: string; name: string; icon: NavigationIconName; accessibleName?: string }[] = [
+    { path: '/home', name: 'Home', icon: 'kubo' },
+    { path: '/board', name: 'Board', icon: 'banig' },
+    { path: '/deadlines', name: 'Deadlines', icon: 'nav-calendar' },
+    { path: '/progress', name: 'Progress', icon: 'nav-progress' },
+    { path: '/garden', name: 'Tanim', icon: 'nav-sprout', accessibleName: 'Munting Tanim' },
   ];
   private readonly main = viewChild.required<ElementRef<HTMLElement>>('content');
 
@@ -41,8 +41,8 @@ export class WorkspaceComponent {
     const { store, motion } = this;
     if (!store || !motion) return;
     const route = inject(ActivatedRoute);
-    store.completionEvents().pipe(takeUntilDestroyed()).subscribe(({ taskId }) => {
-      motion.play(taskId, store.tasks()[taskId]?.title ?? '');
+    store.completionEvents().pipe(takeUntilDestroyed()).subscribe(({ taskId, earnedWater }) => {
+      if (earnedWater) motion.play(taskId, store.tasks()[taskId]?.title ?? '');
     });
     effect(() => {
       if (!store.completion()) motion.clearVisual();

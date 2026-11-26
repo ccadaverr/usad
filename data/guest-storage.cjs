@@ -1,3 +1,4 @@
+const { DEFAULT_TIME_ZONE, upgradeGarden } = require('./garden.cjs');
 const { createHash, createHmac, randomBytes, timingSafeEqual } = require('node:crypto');
 const {
   closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync,
@@ -86,9 +87,11 @@ function guestStorage(directory, { now = Date.now, maxGuests = 1500, persist = r
     if (!bytes) return null;
     const snapshot = JSON.parse(bytes);
     if (snapshot.profile?.expiresAt !== session.expiresAt || !Array.isArray(snapshot.tasks)
-      || snapshot.garden?.version !== 1 || !Array.isArray(snapshot.garden.entries)) {
+      || !Array.isArray(snapshot.garden?.entries)) {
       throw new Error('Invalid guest workspace.');
     }
+    snapshot.garden = upgradeGarden(snapshot.garden);
+    snapshot.profile.timeZone ??= DEFAULT_TIME_ZONE;
     return snapshot;
   }
 

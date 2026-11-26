@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { FLOWER_SITES, stemStretch } from './botanical-growth';
-import type { GardenState } from './garden.service';
+import { streakFruit } from './streak-fruit';
+import { wateringCan } from './watering-can';
+import {
+  CAN_ANCHOR_BOTTOM, CAN_DISPLAY_WIDTH, CAN_SPACE, PlantStage, WateringTransition, WATERING_DURATION,
+  fruitAmount, mix, smooth, stageAmount, transitionDuration, transitionFrame,
+} from './watering-motion';
 
 const { sin, cos, PI } = Math;
 const goldAngle = PI * (3 - Math.sqrt(5));
@@ -81,11 +86,13 @@ function contactShadow() {
   gradient.addColorStop(1, '#41382c00');
   context.fillStyle = gradient;
   context.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 /** The garden renders on demand. Meshes, observers, timers and the context are owned by this instance. */
-export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
+export function specimen(canvas: HTMLCanvasElement, failed: () => void, firstFrame: () => void) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, failIfMajorPerformanceCaveat: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -101,7 +108,7 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
 
   const pivot = new THREE.Group();
   const plant = new THREE.Group();
-  plant.position.y = .57;
+  plant.position.y = .55;
   pivot.add(plant);
   scene.add(pivot);
   const geometries = new Set<THREE.BufferGeometry>();
@@ -115,7 +122,7 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
   }
 
   const shadowTexture = contactShadow();
-  const shadow = mesh(new THREE.PlaneGeometry(2.5, 1.85), new THREE.MeshBasicMaterial({
+  const shadow = mesh(new THREE.PlaneGeometry(1.85, 1.65), new THREE.MeshBasicMaterial({
     map: shadowTexture, transparent: true, depthWrite: false,
   }), scene);
   shadow.rotation.x = -PI / 2;
@@ -152,38 +159,98 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 8, radius, 7, false), surface, parent);
   }
   function leaf(position: THREE.Vector3, angle: number, length: number, width: number, rise: number, tint: number, parent: THREE.Group) {
-    const bladeMesh = mesh(blade(length, width, rise, tint), foliage, parent);
+    const geometry = blade(length, width, rise, tint);
+    geometry.computeBoundingBox();
+    const bladeMesh = mesh(geometry, foliage, parent);
     bladeMesh.position.copy(position);
     bladeMesh.rotation.y = -angle;
+    return bladeMesh;
   }
+  function unfold(blade: THREE.Mesh, amount: number) {
+    blade.visible = amount > 0;
+    if (!blade.visible) return;
+    blade.scale.set(amount, .58 + .42 * amount, amount * (.38 + .62 * amount));
+    blade.rotation.z = (1 - amount) * .93;
+  }
+
+  const leafTop = (leaf: THREE.Mesh) => leaf.position.y + leaf.geometry.boundingBox!.max.y;
+
   const layers = tips.map((end, index) => {
     const start = tips[index - 1] ?? 0;
     const anchor = stalk.getPoint(start);
     const group = new THREE.Group();
     group.position.copy(anchor);
-    group.visible = false;
     plant.add(group);
     const center = (value: number) => stalk.getPoint(value).sub(anchor);
     const steps = Array.from({ length: 5 }, (_, step) => center(start + (end - start) * step / 4));
-    stem(steps, .021 - .0015 * index, group);
-    const node = center(end);
+    const curve = new THREE.CatmullRomCurve3(steps);
+    const segments = 32;
+    const sides = 7;
+    const ringSize = (sides + 1) * 3;
+    const tube = new THREE.TubeGeometry(curve, segments, .021 - .0015 * index, sides, false);
+    const position = tube.getAttribute('position') as THREE.BufferAttribute;
+    position.setUsage(THREE.DynamicDrawUsage);
+    const vertices = position.array as Float32Array;
+    const fullLength = vertices.slice();
+    mesh(tube, stemSurface, group);
+
+    const leafNode = new THREE.Group();
+    group.add(leafNode);
     const angle = index * goldAngle + .35;
     const size = [.26, .37, .46, .58, .7, .64, .6, .53, .42, .31][index];
-    leaf(node, angle, size, size * .22, size * .34, greens[index % greens.length], group);
-    leaf(node, angle + 2.66, size * .76, size * .17, size * .46, greens[(index + 2) % greens.length], group);
+    const blades = [
+      leaf(new THREE.Vector3(), angle, size, size * .22, size * .34, greens[index % greens.length], leafNode),
+      leaf(new THREE.Vector3(), angle + 2.66, size * .76, size * .17, size * .46, greens[(index + 2) % greens.length], leafNode),
+    ];
 
+    let height = steps[steps.length - 1].y + Math.max(...blades.map(leafTop));
+    let extendBranch = (_amount: number) => {};
     if ([4, 5, 7, 8].includes(index)) {
-      const from = center(start + (end - start) * .24);
+      const branch = new THREE.Group();
+      branch.position.copy(center(start + (end - start) * .24));
+      group.add(branch);
       const azimuth = angle + 1.3;
       const direction = new THREE.Vector3(cos(azimuth), 0, sin(azimuth));
-      const bend = from.clone().addScaledVector(direction, .22).add(new THREE.Vector3(0, .10, 0));
-      const branchTip = from.clone().addScaledVector(direction, .33 + .013 * index).add(new THREE.Vector3(0, .27, 0));
-      stem([from, bend, branchTip], .012, group, youngStem);
-      leaf(bend, azimuth - .7, .38, .105, .135, greens[2], group);
-      leaf(branchTip, azimuth + .27, .34, .09, .17, greens[1], group);
+      const bend = direction.clone().multiplyScalar(.22).add(new THREE.Vector3(0, .10, 0));
+      const branchTip = direction.clone().multiplyScalar(.33 + .013 * index).add(new THREE.Vector3(0, .27, 0));
+      stem([new THREE.Vector3(), bend, branchTip], .012, branch, youngStem);
+      const sideLeaves = [
+        leaf(bend, azimuth - .7, .38, .105, .135, greens[2], branch),
+        leaf(branchTip, azimuth + .27, .34, .09, .17, greens[1], branch),
+      ];
+      height = Math.max(height, branch.position.y + Math.max(...sideLeaves.map(leafTop)));
+      extendBranch = amount => {
+        const reach = smooth((amount - .29) / .71);
+        branch.visible = reach > 0;
+        branch.scale.setScalar(reach);
+        sideLeaves.forEach(blade => unfold(blade, smooth((reach - .14) / .86)));
+      };
     }
 
-    return group;
+    let previous = -1;
+    let movingRing = ringSize;
+    const extend = (amount: number) => {
+      if (previous === amount) return;
+      previous = amount;
+      group.visible = amount > 0;
+      if (!group.visible) return;
+
+      // Keep each mature ring fixed. Only the last ring moves with the growing tip.
+      vertices.set(fullLength.subarray(movingRing, movingRing + ringSize), movingRing);
+      const length = amount * segments;
+      const count = Math.ceil(length);
+      const fraction = length - (count - 1);
+      movingRing = count * ringSize;
+      for (let coordinate = movingRing; coordinate < movingRing + ringSize; coordinate++) {
+        vertices[coordinate] = mix(fullLength[coordinate - ringSize], fullLength[coordinate], fraction);
+      }
+      position.needsUpdate = true;
+      tube.setDrawRange(0, count * sides * 6);
+      curve.getPointAt(amount, leafNode.position);
+      blades.forEach((blade, i) => unfold(blade, smooth((amount - .38 - i * .09) / (.62 - i * .09))));
+      extendBranch(amount);
+    };
+    return { extend, height: anchor.y + height };
   });
 
   const budAccent = material(0xb78c6f);
@@ -194,11 +261,12 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     const branch = new THREE.Group();
     plant.add(branch);
     const from = stalk.getPoint(site.anchor);
+    branch.position.copy(from);
     const direction = new THREE.Vector3(cos(site.angle), 0, sin(site.angle));
-    const elbow = from.clone().addScaledVector(direction, site.reach * .53).add(new THREE.Vector3(0, site.rise * .28, 0));
-    const tip = from.clone().addScaledVector(direction, site.reach).add(new THREE.Vector3(0, site.rise, 0));
-    stem([from, elbow, tip], .008, branch, youngStem);
-    leaf(elbow, site.angle + .84, .22, .051, .09, greens[2], branch);
+    const elbow = direction.clone().multiplyScalar(site.reach * .53).add(new THREE.Vector3(0, site.rise * .28, 0));
+    const tip = direction.clone().multiplyScalar(site.reach).add(new THREE.Vector3(0, site.rise, 0));
+    stem([new THREE.Vector3(), elbow, tip], .008, branch, youngStem);
+    const branchLeaf = leaf(elbow, site.angle + .84, .22, .051, .09, greens[2], branch);
 
     const head = new THREE.Group();
     head.position.copy(tip);
@@ -223,97 +291,101 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     center.position.y = .021;
     center.scale.y = .47;
     branch.visible = false;
-    return { site, branch, bud, blossom, petals, height: tip.y + site.size };
+    return { site, branch, branchLeaf, bud, blossom, petals, height: from.y + tip.y + site.size };
   });
 
-  const dropGeometry = new THREE.LatheGeometry([
-    [0, -.047], [.021, -.040], [.033, -.022], [.029, -.001], [.016, .032], [0, .067],
-  ].map(([radius, height]) => new THREE.Vector2(radius, height)), 12);
-  const waterSurface = new THREE.MeshStandardMaterial({ color: 0x77acbc, roughness: .29, metalness: .09 });
-  const drop = mesh(dropGeometry, waterSurface, scene);
-  drop.scale.setScalar(1.35);
-  const ringSurface = new THREE.MeshBasicMaterial({ color: 0xaedcde, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-  const ripple = mesh(new THREE.RingGeometry(.073, .089, 24), ringSurface, scene);
-  ripple.rotation.x = -PI / 2;
-  ripple.position.set(.20, .58, .24);
-  drop.visible = ripple.visible = false;
+  const can = wateringCan(scene, mesh);
+  const fruit = streakFruit(plant, mesh);
   const camera = new THREE.OrthographicCamera();
+  const rest = new THREE.Vector3();
+  const viewDirection = new THREE.Vector3();
   let aspect = 1;
+  let canvasHeight = 0;
   let visible = false;
   let disposed = false;
+  let drawn = false;
   let frame = 0;
-  let level = 1;
-  let lifetime = -1;
-  let oldLevel = 1;
-  let oldLifetime = 0;
-  let growthAt = -Infinity;
-  let waterAt = -Infinity;
+  let stage: PlantStage = { level: 1, growth: 0, streak: 0 };
+  let transition: WateringTransition | undefined;
   let yaw = -.43;
   pivot.rotation.y = yaw;
 
-  const unit = (value: number) => Math.max(0, Math.min(1, value));
-  const ease = (value: number) => 1 - (1 - value) ** 3;
-  const plantHeight = (stage: number, count: number) => {
-    const stemHeight = stalk.getPoint(tips[stage - 1]).y;
-    const tallest = flowers.reduce((height, flower) => flower.site.bud <= stage ? Math.max(height, flower.height) : height, stemHeight);
-    return .61 + tallest * stemStretch(count);
+  const plantHeight = ({ level, growth }: PlantStage) => {
+    const canopy = layers.slice(0, level).reduce((height, layer) => Math.max(height, layer.height), 0);
+    const tallest = flowers.reduce((height, flower) =>
+      flower.site.bud <= level ? Math.max(height, flower.height) : height, canopy);
+    return plant.position.y + tallest * stemStretch(growth) + .09;
   };
 
   function draw(time: number) {
     frame = 0;
-    if (disposed || !visible || document.hidden) return;
-    const elapsed = time - growthAt;
-    const growth = unit(elapsed / 670);
-    const eased = ease(growth);
-    const previousStretch = stemStretch(oldLifetime);
-    const currentStretch = stemStretch(Math.max(0, lifetime));
-    plant.scale.y = previousStretch + (currentStretch - previousStretch) * eased + sin(growth * PI) * .032;
-    layers.forEach((layer, index) => {
-      if (layer.visible) layer.scale.setScalar(index >= oldLevel ? .05 + .95 * eased : 1);
-    });
-    for (const { site, branch, bud, blossom, petals } of flowers) {
-      if (!branch.visible) continue;
-      const emerged = site.bud > oldLevel ? ease(unit(elapsed / 590)) : 1;
-      // Branch points are stalk-relative. The young bud emerges without detaching from its stem.
-      const opened = level < site.open ? 0 : site.open <= oldLevel ? 1 : ease(unit((elapsed - 95) / 760));
-      bud.visible = opened < .88;
-      bud.scale.set(.78, 1.18, .78).multiplyScalar((.28 + .72 * emerged) * (1 - .64 * opened));
-      blossom.visible = opened > 0;
-      blossom.scale.setScalar(.36 + .64 * opened);
-      petals.forEach((shape, index) => { shape.rotation.z = (1 - opened) * (1.28 + .045 * index) - .13; });
-    }
+    if (disposed || !visible || document.hidden || canvasHeight <= CAN_SPACE) return;
+    if (transition && time - transition.startedAt >= transitionDuration(transition.kind)) transition = undefined;
+    const elapsed = transition ? Math.max(0, time - transition.startedAt) : WATERING_DURATION;
+    const isWatering = transition?.kind === 'watering';
+    const { growth, sway } = transitionFrame(elapsed, transition?.kind ?? 'watering');
+    const before = transition?.before ?? stage;
+    const after = transition?.after ?? stage;
+    const amount = (level: number) => stageAmount(level, before, after, growth);
 
-    const heightBefore = plantHeight(oldLevel, oldLifetime);
-    const specimenHeight = heightBefore + (plantHeight(level, Math.max(0, lifetime)) - heightBefore) * eased;
-    const watering = time - waterAt;
-    const descent = unit(watering / 450);
-    const impact = unit((watering - 435) / 510);
-    drop.visible = watering >= 0 && descent < 1;
-    if (drop.visible) {
-      const dropHeight = Math.max(.34, Math.min(1.45, specimenHeight - .61));
-      drop.position.set(.20 + .59 * (1 - descent), .63 + dropHeight * (1 - descent ** 1.8),
-        .24 + .23 * (1 - descent));
-      drop.rotation.z = -.22 * (1 - descent);
+    plant.scale.y = mix(stemStretch(before.growth), stemStretch(after.growth), growth);
+    plant.scale.x = plant.scale.z = 1 + .009 * mix(before.growth, after.growth, growth);
+    plant.rotation.z = sway;
+    layers.forEach((layer, index) => layer.extend(amount(index + 1)));
+    for (const { site, branch, branchLeaf, bud, blossom, petals } of flowers) {
+      const reach = smooth((amount(site.bud) - .24) / .76);
+      branch.visible = reach > 0;
+      if (!branch.visible) continue;
+      branch.scale.setScalar(reach);
+      unfold(branchLeaf, smooth((reach - .15) / .85));
+
+      const opened = smooth((amount(site.open) - .12) / .88);
+      bud.visible = opened < .96;
+      bud.scale.set(.78, 1.18, .78).multiplyScalar(1 - .88 * opened);
+      blossom.visible = opened > 0;
+      blossom.scale.setScalar(opened);
+      petals.forEach((shape, index) => {
+        shape.rotation.z = (1 - opened) * (1.34 + .06 * index) - .13;
+      });
     }
-    ripple.visible = watering >= 435 && impact < 1;
-    if (ripple.visible) {
-      ripple.scale.setScalar(.26 + 1.7 * ease(impact));
-      ringSurface.opacity = .7 * (1 - impact);
-    }
-    plant.rotation.z = impact > 0 && impact < 1 ? sin(impact * PI * 2) * (1 - impact) * .032 : 0;
+    fruit(stalk, mix(tips[before.level - 1], tips[after.level - 1], growth), mix(before.level, after.level, growth),
+      index => fruitAmount(index, before.streak, after.streak, growth));
     pivot.rotation.y += (yaw - pivot.rotation.y) * .24;
 
-    const span = Math.max(specimenHeight + .64, 1.79 / aspect);
-    const aim = specimenHeight * .5;
+    const originalHeight = plantHeight(before);
+    const specimenHeight = mix(originalHeight, plantHeight(after), growth);
+    const canHeight = Math.max(1.26, originalHeight + .26);
+    const canFraming = isWatering ? smooth(elapsed / 240) * (1 - smooth((elapsed - 1810) / 390)) : 0;
+    const height = mix(specimenHeight, Math.max(specimenHeight, canHeight + .29), canFraming);
+    const centerX = .17 * canFraming;
+    const botanicalRatio = (canvasHeight - CAN_SPACE) / canvasHeight;
+    const span = Math.max((height + mix(.46, .35, canFraming)) / botanicalRatio, mix(1.68, 2.50, canFraming) / aspect);
+    const aim = height * .49 - span * (1 - botanicalRatio) / 2;
     camera.left = -span * aspect / 2;
     camera.right = span * aspect / 2;
     camera.top = span / 2;
     camera.bottom = -span / 2;
-    camera.position.set(0, aim + 1.06, 5);
-    camera.lookAt(0, aim, 0);
+    camera.position.set(centerX, aim + 1.06, 5);
+    camera.lookAt(centerX, aim, 0);
     camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+
+    // Map the center of the HTML control to a fixed point on the scene's front plane.
+    // Keep the same model and match its resting size in CSS pixels at every stage.
+    const restScale = CAN_DISPLAY_WIDTH * span / canvasHeight / 1.08;
+    const restDepth = .12;
+    rest.set(0, 2 * CAN_ANCHOR_BOTTOM / canvasHeight - 1, 0).unproject(camera);
+    camera.getWorldDirection(viewDirection);
+    rest.addScaledVector(viewDirection, (restDepth - rest.z) / viewDirection.z);
+    rest.x += .10 * restScale;
+    rest.y -= .025 * restScale;
+    can.draw(isWatering ? elapsed : WATERING_DURATION, originalHeight, rest, restScale);
     try { renderer.render(scene, camera); } catch { failed(); return; }
-    if (elapsed < 855 || watering < 945 || Math.abs(yaw - pivot.rotation.y) > .003) schedule();
+    if (!drawn) {
+      drawn = true;
+      firstFrame();
+    }
+    if (transition || Math.abs(yaw - pivot.rotation.y) > .003) schedule();
   }
 
   function schedule() {
@@ -325,6 +397,7 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     if (!width || !height) return;
     renderer.setSize(width, height, false);
     aspect = width / height;
+    canvasHeight = height;
     schedule();
   });
   resize.observe(canvas);
@@ -333,36 +406,36 @@ export function specimen(canvas: HTMLCanvasElement, failed: () => void) {
     schedule();
   });
   observer.observe(canvas);
+  const updateColors = () => {
+    can.colors(getComputedStyle(canvas));
+    schedule();
+  };
+  updateColors();
+  const appearance = new MutationObserver(updateColors);
+  appearance.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode', 'data-theme'] });
   document.addEventListener('visibilitychange', schedule);
   canvas.addEventListener('webglcontextlost', failed);
 
   return {
-    stage(value: Pick<GardenState, 'level' | 'lifetime'>, previousLevel?: number) {
-      if (level === value.level && lifetime === value.lifetime) return;
-      level = value.level;
-      lifetime = value.lifetime;
-      oldLevel = previousLevel ?? level;
-      oldLifetime = previousLevel === undefined ? lifetime : lifetime - 1;
-      growthAt = previousLevel === undefined ? -Infinity : performance.now();
-      if (previousLevel !== undefined) waterAt = -Infinity;
-      layers.forEach((layer, index) => { layer.visible = index < level; });
-      flowers.forEach(flower => { flower.branch.visible = level >= flower.site.bud; });
+    stage(value: PlantStage, action?: WateringTransition) {
+      stage = value;
+      transition = action;
       schedule();
     },
     rotate(delta: number) { yaw += delta; schedule(); },
-    water() { waterAt = performance.now(); schedule(); },
-    dispose() {
+    dispose(releaseContext = false) {
       disposed = true;
       cancelAnimationFrame(frame);
       resize.disconnect();
       observer.disconnect();
+      appearance.disconnect();
       document.removeEventListener('visibilitychange', schedule);
       canvas.removeEventListener('webglcontextlost', failed);
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
       shadowTexture.dispose();
       renderer.dispose();
-      renderer.forceContextLoss();
+      if (releaseContext) renderer.forceContextLoss();
     },
   };
 }

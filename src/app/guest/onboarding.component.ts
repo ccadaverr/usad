@@ -55,7 +55,7 @@ export class OnboardingComponent {
     { label: 'Progress', title: 'Move forward at your own pace.',
       description: 'Move tasks from Pending to In Progress to Completed as your work moves forward.' },
     { label: 'Grow', title: 'Watch your efforts take root.',
-      description: 'Complete tasks, earn water drops, and nurture your own Munting Tanim.' },
+      description: 'Earn a drop with each first completion. Tap the watering can to use it, and build a daily streak to grow fruit.' },
   ];
   protected readonly index = signal(0);
   protected readonly finalSlide = computed(() => this.index() === this.slides.length - 1);

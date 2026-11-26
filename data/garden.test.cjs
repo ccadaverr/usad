@@ -5,15 +5,48 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
 const { promisify } = require('node:util');
-const { gardenView, reconcileGarden } = require('./garden.cjs');
+const { emptyGarden, gardenView, reconcileGarden, spendWater, upgradeGarden } = require('./garden.cjs');
 const { createApp } = require('./server.cjs');
 
-test('growth advances every two distinct completions and caps at ten', () => {
-  const tasks = Array.from({ length: 56 }, (_, id) => ({ id: String(id), status: 'completed' }));
-  for (let count = 0; count <= tasks.length; count++) {
-    const garden = reconcileGarden(undefined, tasks.slice(0, count));
-    assert.deepEqual(gardenView(garden), { lifetime: count, level: Math.min(10, 1 + Math.floor(count / 2)), available: count });
-    assert.deepEqual(reconcileGarden(garden, tasks.slice(0, count)), garden);
+test('completions earn water and confirmed waterings advance partial growth, levels and the cap', () => {
+  const tasks = Array.from({ length: 22 }, (_, id) => ({ id: String(id), status: 'completed' }));
+  let garden = emptyGarden();
+  for (let index = 0; index < tasks.length; index++) {
+    const current = tasks.slice(0, index + 1);
+    garden = reconcileGarden(garden, current, tasks.slice(0, index));
+    assert.deepEqual(gardenView(garden, current), {
+      revision: index + 1, lifetime: index + 1, waterings: 0, activeWaterings: 0, growth: 0,
+      level: 1, available: index + 1, streak: 0,
+    });
+    assert.equal(reconcileGarden(garden, current, current), garden);
+  }
+  for (let count = 1; count <= tasks.length; count++) {
+    const id = 'test-watering-' + count;
+    const spent = spendWater(garden, tasks, id);
+    assert.equal(spent.receipt.wateringNumber, count);
+    garden = spent.garden;
+    assert.deepEqual(gardenView(garden, tasks), {
+      revision: tasks.length + count, lifetime: tasks.length, waterings: count, activeWaterings: count,
+      growth: Math.min(18, count), level: Math.min(10, 1 + Math.floor(count / 2)), available: tasks.length - count, streak: 0,
+    });
+    assert.deepEqual(spendWater(garden, tasks, id), { garden, receipt: spent.receipt });
+  }
+  assert.equal(spendWater(garden, tasks, 'no-water-left'), null);
+});
+
+test('legacy growth includes existing receipts and preserves all credits and capped maturity', () => {
+  for (const [lifetime, waterings, growth] of [[5, 0, 5], [6, 2, 6], [20, 1, 18], [22, 21, 18]]) {
+    const entries = Array.from({ length: lifetime }, (_, index) => ({
+      taskId: 'old-' + index, ...(index < waterings ? { wateringId: 'water-' + index } : {}),
+    }));
+    const migrated = upgradeGarden({ version: 1, entries });
+    assert.equal(upgradeGarden(migrated), migrated);
+    assert.deepEqual(migrated.entries, entries);
+    const all = entries.map(({ taskId }) => ({ id: taskId, status: 'completed' }));
+    assert.deepEqual(gardenView(migrated, all), {
+      revision: 0, lifetime, waterings, activeWaterings: waterings, growth, level: 1 + Math.floor(growth / 2),
+      available: lifetime - waterings, streak: 0,
+    });
   }
 });
 
@@ -39,7 +72,7 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
     method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const read = async () => (await request('/garden')).json();
-  assert.deepEqual(await read(), { lifetime: 3, level: 2, available: 3 });
+  assert.deepEqual(await read(), { revision: 0, lifetime: 3, waterings: 0, activeWaterings: 0, growth: 3, level: 2, available: 3, streak: 0 });
   assert.deepEqual(snapshot(), start, 'Migration has no read-side disk write');
 
   failWrite = true;
@@ -49,28 +82,28 @@ test('task PATCH and achievement share a durable commit, and watering retries sp
   assert.equal(rejected.headers.get('X-USAD-Garden-Level'), null);
   assert.deepEqual(snapshot(), start);
   assert.equal((await (await request('/tasks/pending')).json()).status, 'pending');
-  assert.deepEqual(await read(), { lifetime: 3, level: 2, available: 3 });
+  assert.deepEqual(await read(), { revision: 0, lifetime: 3, waterings: 0, activeWaterings: 0, growth: 3, level: 2, available: 3, streak: 0 });
 
   failWrite = false;
   const completed = await request('/tasks/pending', 'PATCH', { status: 'completed' });
-  assert.equal(completed.headers.get('X-USAD-Garden-Level'), '3');
+  assert.equal(completed.headers.get('X-USAD-Garden-Level'), null);
   assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1');
   await request('/tasks/pending', 'PATCH', { status: 'pending', order: 'a0' });
   const repeated = await request('/tasks/pending', 'PATCH', { status: 'completed' });
   assert.equal(repeated.headers.get('X-USAD-Garden-Level'), null);
   assert.equal(repeated.headers.get('X-USAD-Water-Earned'), null);
   await request('/tasks/pending', 'DELETE');
-  assert.deepEqual(await read(), { lifetime: 4, level: 3, available: 4 });
+  assert.deepEqual(await read(), { revision: 4, lifetime: 4, waterings: 0, activeWaterings: 0, growth: 3, level: 2, available: 3, streak: 0 });
 
   const id = 'water-operation-0001';
   failWrite = true;
   assert.equal((await request('/garden/water', 'POST', { id })).status, 503);
-  assert.equal((await read()).available, 4);
+  assert.equal((await read()).available, 3);
   failWrite = false;
   const attempts = await Promise.all([request('/garden/water', 'POST', { id }), request('/garden/water', 'POST', { id })]);
-  for (const attempt of attempts) assert.equal((await attempt.json()).available, 3);
-  assert.deepEqual(gardenView(reconcileGarden(snapshot().garden, snapshot().tasks)), {
-    lifetime: 4, level: 3, available: 3,
+  for (const attempt of attempts) assert.equal((await attempt.json()).available, 2);
+  assert.deepEqual(gardenView(snapshot().garden, snapshot().tasks), {
+    revision: 5, lifetime: 4, waterings: 1, activeWaterings: 1, growth: 4, level: 3, available: 2, streak: 0,
   });
 });
 
@@ -100,20 +133,20 @@ test('the garden and watering routes restore existing history from disk after re
   };
   const json = { 'Content-Type': 'application/json' };
   assert.equal((await fetch(runtime.base + '/api/garden')).status, 404, 'Angular owns the public /api prefix');
-  assert.deepEqual(await state(), { lifetime: 1, available: 1, level: 1 });
+  assert.deepEqual(await state(), { revision: 0, lifetime: 1, waterings: 0, activeWaterings: 0, growth: 1, available: 0, level: 1, streak: 0 });
   const completed = await fetch(runtime.base + '/tasks/new', {
     method: 'PATCH', headers: json, body: JSON.stringify({ status: 'completed' }),
   });
-  assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1', 'The second credit advances the level');
-  assert.equal(completed.headers.get('X-USAD-Garden-Level'), '2');
+  assert.equal(completed.headers.get('X-USAD-Water-Earned'), '1');
+  assert.equal(completed.headers.get('X-USAD-Garden-Level'), null);
   const water = () => fetch(runtime.base + '/garden/water', {
     method: 'POST', headers: json, body: JSON.stringify({ id: 'water-after-restart-01' }),
   });
   assert.equal((await water()).status, 200);
   await stop(runtime.server);
   runtime = await start();
-  assert.deepEqual(await state(), { lifetime: 2, available: 1, level: 2 });
-  assert.deepEqual(await (await water()).json(), { lifetime: 2, available: 1, level: 2 });
+  assert.deepEqual(await state(), { revision: 2, lifetime: 2, waterings: 1, activeWaterings: 1, growth: 2, available: 0, level: 2, streak: 1 });
+  assert.deepEqual(await (await water()).json(), { ...await state(), wateringNumber: 1, wateringRevision: 2 });
 });
 
 test('startup seeds a missing configured file and preserves existing database bytes', async context => {
@@ -135,4 +168,17 @@ test('startup seeds a missing configured file and preserves existing database by
   await seed();
   await assert.rejects(seed('--reset'), /only available for the default local database/);
   assert.equal(readFileSync(file, 'utf8'), existing);
+});
+
+test('the last day of a year and the first of the next are consecutive streak days', () => {
+  const tasks = ['a', 'b'].map(id => ({ id, status: 'completed' }));
+  const first = Date.parse('2026-12-31T16:00:00Z');
+  const second = Date.parse('2027-01-01T16:01:00Z');
+  const before = reconcileGarden(emptyGarden(), [tasks[0]], [], first, 'Asia/Manila');
+  const after = reconcileGarden(before, tasks, [tasks[0]], second, 'Asia/Manila');
+  assert.deepEqual(after.entries.map(entry => entry.completionDay), ['2027-01-01', '2027-01-02']);
+  const yearEnd = reconcileGarden(emptyGarden(), [tasks[0]], [], first - 60_000, 'Asia/Manila');
+  const newYear = reconcileGarden(yearEnd, tasks, [tasks[0]], first + 60_000, 'Asia/Manila');
+  assert.deepEqual(newYear.entries.map(entry => entry.completionDay), ['2026-12-31', '2027-01-01']);
+  assert.equal(gardenView(newYear, tasks, first + 60_000, 'Asia/Manila').streak, 2);
 });

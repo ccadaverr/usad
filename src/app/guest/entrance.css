@@ -93,7 +93,7 @@ app-root, app-workspace, app-welcome, app-onboarding, app-entry-brand { display:
   mask-image: linear-gradient(to right, transparent 3%, #0007 34%, #000 58%);
 }
 .welcome-art svg { display: block; width: 100%; height: 100%; }
-.welcome-entry .button, .button.tour-skip { box-shadow: none; }
+.welcome-entry .button { box-shadow: none; }
 
 app-onboarding { isolation: isolate; overflow-x: clip; --glide: cubic-bezier(.22, 1, .36, 1); }
 .tour-frame {
@@ -194,8 +194,6 @@ app-onboarding { isolation: isolate; overflow-x: clip; --glide: cubic-bezier(.22
   margin-block-start: clamp(10px, 3vw, 24px); padding-block-start: 3px;
   border-top: 1px solid var(--line);
 }
-.button.tour-skip { color: var(--forest); background: var(--selected); border-radius: 999px; white-space: nowrap; }
-.tour-skip:hover { background: var(--hover); }
 .tour-skip app-icon { width: 15px; height: 15px; }
 .tour-indicators { display: flex; }
 .tour-indicators button { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
@@ -252,4 +250,40 @@ app-onboarding { isolation: isolate; overflow-x: clip; --glide: cubic-bezier(.22
   .tour-frame { transform: none; transition: none; }
   .tour-slide, .tour-illustration, .tour-indicators span { transition: none; }
   .tour-entered .tour-active .tour-copy h2, .tour-active .preview-task, .tour-active .grow-stem { animation: none; }
+}
+
+.tour-frame { padding-block-end: calc(12px + var(--safe-bottom)); }
+.tour-layout { max-width: 1250px; padding-block-start: clamp(14px, 3.6dvh, 42px); }
+.tour-viewport { min-block-size: clamp(310px, 64dvh, 720px); }
+.tour-art { min-block-size: clamp(210px, 53dvh, 580px); }
+.tour-illustration { width: min(100%, 560px); }
+.tour-composer { max-width: 480px; }
+.tour-grow svg { max-height: clamp(142px, 32dvh, 300px); }
+.preview-stages { gap: clamp(4px, 1.3vw, 14px); }
+.preview-task, .preview-field strong { font-size: clamp(.7rem, 1.2vw, .9rem); }
+.preview-slot, .preview-task { min-height: 34px; }
+.tour-controls { margin-block-start: clamp(8px, 2dvh, 22px); }
+.tour-controls .tour-skip {
+  min-block-size: 44px; padding-inline: 8px; gap: 7px; border: 0;
+  background: transparent; color: var(--forest); box-shadow: none;
+  text-decoration: underline; text-underline-offset: .28em;
+}
+.tour-controls .tour-skip:hover { text-decoration-thickness: 2px; }
+.tour-controls .tour-skip:disabled { opacity: .65; }
+@media (min-width: 768px) {
+  .tour-slide { grid-template-columns: minmax(0, .76fr) minmax(0, 1.24fr); }
+  .tour-composer, .tour-board { padding: clamp(17px, 3vw, 32px); }
+}
+@media (max-width: 767px) {
+  .tour-slide { grid-template-rows: auto 1fr; gap: clamp(12px, 2.5dvh, 24px); }
+  .tour-art { min-block-size: clamp(205px, 42dvh, 400px); }
+}
+@media (max-height: 690px) and (max-width: 767px) {
+  .tour-frame .entry-brand { min-height: 52px; }
+  .tour-viewport { min-block-size: 0; }
+  .tour-layout { padding-block-start: 8px; }
+  .tour-controls { margin-block-start: 6px; }
+  .tour-copy h2 { font-size: clamp(2rem, 9vw, 2.65rem); }
+  .tour-eyebrow { margin-block-end: 4px; }
+  .tour-art { min-block-size: clamp(173px, 36dvh, 230px); }
 }

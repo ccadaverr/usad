@@ -134,4 +134,19 @@ describe('board.logic', () => {
     expect(deadlineContext({ ...first, dueDate: '2027-01-01' }, '2026-12-31').label).toBe('Due tomorrow');
     expect(deadlineContext({ ...first, dueDate: '2026-12-31' }, '2027-01-01').label).toBe('1 day overdue');
   });
+
+  it('groups date-only deadlines across DST, month, and year rollovers', () => {
+    for (const [today, tomorrow, following] of [
+      ['2026-03-08', '2026-03-09', '2026-03-10'],
+      ['2026-11-01', '2026-11-02', '2026-11-03'],
+      ['2026-04-30', '2026-05-01', '2026-05-02'],
+      ['2026-12-31', '2027-01-01', '2027-01-02'],
+    ]) {
+      const groups = groupDeadlines([
+        { ...third, dueDate: following }, { ...second, dueDate: tomorrow }, { ...first, dueDate: today },
+      ], today);
+      expect([groups.today[0].id, groups.tomorrow[0].id, groups.upcoming[0].id])
+        .toEqual([first.id, second.id, third.id]);
+    }
+  });
 });

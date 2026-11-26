@@ -1,17 +1,16 @@
 import { DestroyRef, NgZone, computed, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, finalize } from 'rxjs';
 import { distinctSubjects, groupDeadlines, matchesFilter, moveRank, orderTasks, rankBetween, todayISO } from './board.logic';
 import { BoardFilter, ColumnView, STATUS_LABELS, STATUSES, Task, TaskInput, TaskStatus } from './board.models';
-import { SavedTask, TaskService } from './task.service';
+import { SavedTask, StreakMilestone, TaskService } from './task.service';
 
 const emptyFilter: BoardFilter = { query: '', priority: 'all', subject: '' };
 
 export interface CompletionReceipt {
   taskId: string;
   earnedWater: boolean;
-  gardenLevel?: number;
 }
 
 interface BoardState {
@@ -25,7 +24,6 @@ interface BoardState {
   notice: string;
   completion: CompletionReceipt | null;
   undoTask: Task | null;
-  pendingGrowthLifetime: number | null;
 }
 
 const initialState: BoardState = {
@@ -36,7 +34,6 @@ const initialState: BoardState = {
   loading: false,
   saving: false,
   undoTask: null,
-  pendingGrowthLifetime: null,
   error: '',
   notice: '',
   completion: null,
@@ -84,21 +81,41 @@ export const BoardStore = signalStore(
     let noticeTimer: ReturnType<typeof setTimeout>;
     destroyRef.onDestroy(() => clearTimeout(noticeTimer));
     const completed = new Subject<CompletionReceipt>();
-    destroyRef.onDestroy(() => completed.complete());
+    const gardenChanged = new Subject<void>();
+    let pendingMilestone: StreakMilestone | undefined;
+    const changes = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('usad.tasks.changed');
+    let reloadQueued = false;
+    const reloadAfterWrite = () => {
+      if (reloadQueued && !destroyRef.destroyed && !store.loading() && !store.saving()) load();
+    };
+    if (changes) changes.onmessage = () => {
+      // Only an invalidation signal crosses tabs. Each tab reads its authenticated workspace.
+      reloadQueued = true;
+      reloadAfterWrite();
+      gardenChanged.next();
+    };
+    destroyRef.onDestroy(() => {
+      completed.complete();
+      gardenChanged.complete();
+      changes?.close();
+    });
 
-    function updateTask({ awardedLevel, earnedWater, gardenLifetime, ...task }: SavedTask): void {
+    function updateTask({ earnedWater, gardenChanged: changed, milestone, ...task }: SavedTask): void {
       const previous = store.tasks()[task.id];
       const tasks = { ...store.tasks(), [task.id]: task };
       const movedToComplete = !!previous && previous.status !== 'completed' && task.status === 'completed';
-      if (earnedWater && gardenLifetime) patchState(store, { pendingGrowthLifetime: gardenLifetime });
       if (movedToComplete || earnedWater && task.status === 'completed') {
-        const completion: CompletionReceipt = { taskId: task.id, earnedWater: earnedWater === true, gardenLevel: awardedLevel };
+        const completion: CompletionReceipt = { taskId: task.id, earnedWater: earnedWater === true };
         // The response is confirmed. Let motion capture the visible row before the view changes.
         completed.next(completion);
         patchState(store, { tasks, notice: 'Ayos! One task down.', undoTask: movedToComplete ? previous : null, completion });
       } else {
         patchState(store, { tasks });
       }
+      if (milestone) {
+        pendingMilestone = { ...milestone, before: Math.min(pendingMilestone?.before ?? milestone.before, milestone.before) };
+      }
+      if (changed || earnedWater) gardenChanged.next();
     }
 
     function write<T>(request: Observable<T>, message: string, apply: (value: T) => void): Promise<boolean> {
@@ -106,10 +123,11 @@ export const BoardStore = signalStore(
       clearTimeout(noticeTimer);
       patchState(store, { saving: true, notice: '', completion: null });
       return new Promise((resolve) => {
-        request.pipe(takeUntilDestroyed(destroyRef)).subscribe({
+        request.pipe(takeUntilDestroyed(destroyRef), finalize(reloadAfterWrite)).subscribe({
           next: (value) => {
             patchState(store, { saving: false, notice: message, undoTask: null });
             apply(value);
+            changes?.postMessage('changed');
             clearTimeout(noticeTimer);
             noticeTimer = zone.runOutsideAngular(() => setTimeout(() => patchState(store, { notice: '', undoTask: null, completion: null }), 12000));
             resolve(true);
@@ -127,13 +145,31 @@ export const BoardStore = signalStore(
       return rankBetween(store.columns()[status].at(-1)?.order ?? null, null);
     }
 
+    function load(): void {
+      if (store.loading() || store.saving()) return;
+      reloadQueued = false;
+      patchState(store, { loading: true, notice: '', completion: null });
+      api.list().pipe(takeUntilDestroyed(destroyRef), finalize(reloadAfterWrite)).subscribe({
+        next: (tasks) => patchState(store, {
+          tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
+          undoTask: tasks.some(task => task.id === store.undoTask()?.id && task.status === 'completed') ? store.undoTask() : null,
+          loaded: true,
+          loading: false,
+          error: '',
+        }),
+        error: () => patchState(store, { loading: false, error: 'Could not load tasks. Check that the task server is running, then try again.' }),
+      });
+    }
+
     return {
       completionEvents: () => completed.asObservable(),
-      takeGardenGrowth(lifetime: number): boolean {
-        const confirmed = store.pendingGrowthLifetime();
-        if (confirmed === null || confirmed > lifetime) return false;
-        patchState(store, { pendingGrowthLifetime: null });
-        return confirmed === lifetime;
+      gardenChanges: () => gardenChanged.asObservable(),
+      takeStreakMilestone(revision: number, streak: number): number | undefined {
+        const milestone = pendingMilestone;
+        if (!milestone || revision < milestone.revision) return;
+        pendingMilestone = undefined;
+        if (streak >= milestone.after) return milestone.before;
+        return undefined;
       },
       undo(): Promise<boolean> {
         const previous = store.undoTask();
@@ -141,20 +177,7 @@ export const BoardStore = signalStore(
         return write(api.update(previous.id, { status: previous.status, order: previous.order,
           updatedAt: new Date().toISOString() }), 'Previous stage restored.', updateTask);
       },
-      load(): void {
-        if (store.loading() || store.saving()) return;
-        patchState(store, { loading: true, notice: '', completion: null });
-        api.list().pipe(takeUntilDestroyed(destroyRef)).subscribe({
-          next: (tasks) => patchState(store, {
-            tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
-            undoTask: tasks.some(task => task.id === store.undoTask()?.id && task.status === 'completed') ? store.undoTask() : null,
-            loaded: true,
-            loading: false,
-            error: '',
-          }),
-          error: () => patchState(store, { loading: false, error: 'Could not load tasks. Check that the task server is running, then try again.' }),
-        });
-      },
+      load,
       setToday(): void {
         patchState(store, { today: todayISO() });
       },
@@ -178,10 +201,11 @@ export const BoardStore = signalStore(
       },
       remove(id: string): Promise<boolean> {
         if (!store.tasks()[id]) return Promise.resolve(false);
-        return write(api.delete(id), 'Task deleted.', () => {
+        return write(api.delete(id), 'Task deleted.', changed => {
           const tasks = { ...store.tasks() };
           delete tasks[id];
           patchState(store, { tasks });
+          if (changed) gardenChanged.next();
         });
       },
       move(id: string, status: TaskStatus, index?: number): Promise<boolean> {

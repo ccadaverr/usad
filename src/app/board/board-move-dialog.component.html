@@ -1,0 +1,54 @@
+<div class="task-dialog move-dialog">
+  <header class="dialog-heading">
+    <div>
+      <h2 #heading id="move-dialog-title" tabindex="-1">Move task</h2>
+      <p id="move-dialog-task" class="move-task-name">{{ title() }}</p>
+    </div>
+    <button class="btn button icon-button" type="button" aria-label="Close Move task"
+      [attr.aria-disabled]="destination() ? 'true' : null" (click)="dismiss()">
+      <app-icon name="close" />
+    </button>
+  </header>
+
+  <div class="dialog-body">
+    <p class="sr-only" role="status">
+      @if (destination(); as stage) { Moving task to {{ labels[stage] }}… }
+      @else if (store.loading()) { Reloading Board tasks… }
+    </p>
+
+    @if (store.error(); as error) {
+      <div class="notice notice-error">
+        <p role="alert">{{ error }}</p>
+        <button #reloadButton class="btn button button-secondary" type="button" [disabled]="store.loading()" (click)="reload()">
+          {{ store.loading() ? 'Reloading…' : 'Reload tasks' }}
+        </button>
+      </div>
+    } @else if (!task()) {
+      <p class="notice" role="status">This task is no longer on the Board.</p>
+    }
+
+    <p class="move-instructions">Choose a stage. Counts include all tasks.</p>
+    <div class="move-stages" role="group" aria-label="Destination stages">
+      @for (status of statuses; track status) {
+        @let current = task()?.status === status;
+        @let saving = destination() === status;
+        <button type="button" class="move-stage" [attr.data-status]="status" [disabled]="current"
+          [attr.aria-disabled]="!canChoose() || current ? 'true' : null"
+          [class.move-current]="current" [class.move-saving]="saving" (click)="move(status)">
+          <span class="move-stage-name"><span class="status-dot" aria-hidden="true"></span>{{ labels[status] }}</span>
+          <span class="move-stage-count">{{ store.columns()[status].length }} {{ store.columns()[status].length === 1 ? 'task' : 'tasks' }}</span>
+          <span class="move-stage-note">
+            @if (current) { Current stage }
+            @else if (saving) { Moving… }
+            @else if (canChoose()) { Move here <app-icon name="arrow" /> }
+          </span>
+        </button>
+      }
+    </div>
+  </div>
+
+  <footer class="dialog-footer">
+    <button class="btn button button-secondary" type="button" [attr.aria-disabled]="destination() ? 'true' : null"
+      (click)="dismiss()">Cancel</button>
+  </footer>
+</div>

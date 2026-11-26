@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 export type IconName = 'home' | 'board' | 'calendar' | 'progress' | 'plus' | 'arrow' | 'search' | 'grip' | 'close' | 'check' | 'warning' | 'chevron' | 'list' | 'sprout' | 'appearance' | 'filter' | 'edit' | 'guest' | 'drop';
+export type NavigationIconName = 'kubo' | 'banig' | 'nav-calendar' | 'nav-progress' | 'nav-sprout';
 
 @Component({
   selector: 'app-icon',
@@ -9,6 +10,14 @@ export type IconName = 'home' | 'board' | 'calendar' | 'progress' | 'plus' | 'ar
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65"
       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
       @switch (name()) {
+        @case ('kubo') { <path d="M2.5 12 12 3l9.5 9H2.5Zm3 0v5.5h13V12M7 17.5V21m10-3.5V21m-5.5-3.5L10 21" /> }
+        @case ('banig') {
+          <rect x="2.8" y="4.4" width="18.4" height="15.2" rx="2" />
+          <path d="M9 4.4v15.2m6-15.2v15.2M5 8.5h1.8M5 12.5h1.8m4.3-2h1.8m-1.8 4h1.8m4.3-2h1.8" />
+        }
+        @case ('nav-calendar') { <rect x="3.5" y="5.5" width="17" height="15" rx="2" /><path d="M7.5 3.5v4m9-4v4m-13 3h17m-12 5h2m3 0h2" /> }
+        @case ('nav-progress') { <path d="M4 4v16h16M8.5 16v-3.5m4.5 3.5v-7m4.5 7V5" /> }
+        @case ('nav-sprout') { <path d="M7.5 20.5h9m-4.5 0v-7m0 2C7 15.5 4 12.5 4 8c4.5 0 8 3 8 7.5Zm0-2C12 8 15 4.5 20 4c0 5-3 9-8 9.5Z" /> }
         @case ('appearance') { <circle cx="12" cy="12" r="8.5" /><path d="M12 3.5a8.5 8.5 0 1 1 0 17Z" fill="currentColor" stroke="none" /> }
         @case ('home') { <path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 21v-7h6v7" /> }
         @case ('board') { <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16m6-16v16" /> }
@@ -33,5 +42,5 @@ export type IconName = 'home' | 'board' | 'calendar' | 'progress' | 'plus' | 'ar
   `,
 })
 export class IconComponent {
-  readonly name = input.required<IconName>();
+  readonly name = input.required<IconName | NavigationIconName>();
 }

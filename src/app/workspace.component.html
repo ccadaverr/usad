@@ -13,7 +13,8 @@
         <app-appearance-control />
         <app-guest-actions />
       }
-      @if (store && pageTitle() !== 'Munting Tanim' && (store.stats().total || (pageTitle() !== 'Home' && pageTitle() !== 'Board'))) {
+      @if (store && pageTitle() !== 'Munting Tanim' &&
+        (store.stats().total || (pageTitle() !== 'Home' && pageTitle() !== 'Board' && pageTitle() !== 'Deadlines'))) {
         <div class="task-create-dock">
           <button class="btn button button-primary create-task-fab" type="button"
             [disabled]="!store.canWrite()" (click)="dialogs?.openTask()">
@@ -34,7 +35,6 @@
       </a>
     }
   </div>
-  <p class="nav-tagline" lang="fil">Munting hakbang.<br />Tunay na pag-usad.</p>
 </nav>
 <main class="app-content" [attr.id]="preview ? null : 'content'" #content [attr.data-entry-main]="preview ? null : ''" tabindex="-1">
   @if (preview) {
@@ -44,11 +44,10 @@
     <p class="sr-only" role="status">
       {{ store.saving() ? 'Saving changes…' : store.notice() }}
       @if (completion?.earnedWater) { +1 water drop earned. }
-      @if (completion?.gardenLevel; as level) { Munting Tanim reached level {{ level }}. }
     </p>
     @if (store.notice()) {
-      <div class="notice notice-success feedback" animate.leave="feedback-leave" [class.bloom-feedback]="!!completion">
-        @for (receipt of completion ? [completion] : []; track receipt) {
+      <div class="notice notice-success feedback" animate.leave="feedback-leave" [class.bloom-feedback]="!!completion?.earnedWater">
+        @for (receipt of completion?.earnedWater ? [completion] : []; track receipt) {
           <app-usad-bloom [animate]="motion?.animateInToast() ?? false" />
         } @empty {
           <app-icon name="check" />
@@ -58,9 +57,8 @@
           @if (completion?.earnedWater) {
             <span class="bloom-reward"><span class="reward-droplet" aria-hidden="true"><app-icon name="drop" /></span>+1 water drop earned</span>
           }
-          @if (completion?.gardenLevel; as level) { <small>Munting Tanim reached level {{ level }}.</small> }
         </div>
-        @if (store.undoTask()) { <button class="button" [disabled]="!store.canWrite()" (click)="store.undo()">Undo</button> }
+        @if (pageTitle() !== 'Munting Tanim' && store.undoTask()) { <button class="button" [disabled]="!store.canWrite()" (click)="store.undo()">Undo</button> }
       </div>
     }
     @for (bloom of motion?.anchored() ?? []; track bloom.sequence) {
@@ -69,7 +67,7 @@
       <app-usad-bloom class="bloom-floating" [animate]="true" [style.left.px]="bloom.x"
         [style.top.px]="bloom.y" (animationend)="motion?.finish($event, bloom.sequence)" />
     }
-    @if (store.undoTask() && !store.notice() && store.canWrite()) {
+    @if (pageTitle() !== 'Munting Tanim' && store.undoTask() && !store.notice() && store.canWrite()) {
       <button class="button" (click)="store.undo()">Retry undo</button>
     }
     @if (store.error()) {

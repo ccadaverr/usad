@@ -1,5 +1,4 @@
 import { DeadlineComponent } from '../shared/deadline.component';
-import { TaskActionsComponent } from '../shared/task-actions.component';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, InjectionToken, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -16,7 +15,7 @@ export const HOME_REVEAL = Symbol('Grow to Home');
 
 @Component({
   selector: 'app-home',
-  imports: [DeadlineComponent, TaskActionsComponent, DatePipe, RouterLink, IconComponent, TaskListComponent],
+  imports: [DeadlineComponent, DatePipe, RouterLink, IconComponent, TaskListComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './home.component.html',
 })

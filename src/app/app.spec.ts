@@ -12,10 +12,11 @@ import { routes } from './app.routes';
 import { CardDialogComponent } from './board/card-dialog.component';
 import { GuestSession } from './guest/guest-session.service';
 import { WorkspaceComponent } from './workspace.component';
-import { Task } from './board/board.models';
+import { STATUSES, Task } from './board/board.models';
 import { BoardStore } from './board/board.store';
 import { localDate, todayISO } from './board/board.logic';
 import { CompletionMotion } from './shared/completion-motion';
+import { IconComponent } from './shared/icon.component';
 import { APPEARANCE_KEY, APPEARANCE_MODE_KEY, AppearanceService } from './shared/appearance.service';
 
 const task: Task = {
@@ -90,6 +91,7 @@ describe('USAD views', () => {
   it('keeps completion in Agenda, outside the featured priority section', async () => {
     const page = await renderHome([{ ...task, dueDate: todayISO() }]);
     expect(page.querySelector('.home-priority .complete-action')).toBeNull();
+    expect(page.querySelector('.home-priority .start-action, .home-agenda .start-action')).toBeNull();
     expect(page.querySelector('.home-priority .priority')?.textContent).toContain('Medium');
     expect(page.querySelector('.home-priority .focus-task-title')?.textContent).toBe(task.title);
     expect(page.querySelector('.home-agenda .complete-action')?.getAttribute('aria-label')).toContain(task.title);
@@ -111,6 +113,36 @@ describe('USAD views', () => {
       .toEqual(['overdue', 'today', 'tomorrow', 'upcoming']);
     expect(page.querySelector('[data-deadline-group="overdue"]')?.textContent).toContain('1 day overdue');
     expect(page.querySelector('main')?.textContent).not.toContain('Finished earlier');
+  });
+
+  it('shows one heading per upcoming date and keeps undated rows free of date tiles', async () => {
+    const page = await renderHome([
+      { ...task, id: 'later', title: 'Later', dueDate: '2099-02-01' },
+      { ...task, id: 'first', title: 'First', dueDate: '2099-01-01' },
+      { ...task, id: 'second', title: 'Second', dueDate: '2099-01-01' },
+      { ...task, id: 'silent', title: 'Undated' },
+    ]);
+    await navigate('/deadlines');
+    expect(page.querySelector('.deadline-lead')?.getAttribute('data-urgency')).toBe('upcoming');
+    expect(Array.from(page.querySelectorAll('.deadline-day time'), node => node.getAttribute('datetime')))
+      .toEqual(['2099-01-01', '2099-02-01']);
+    expect(Array.from(page.querySelectorAll('.deadline-day .task-row-copy strong'), node => node.textContent))
+      .toEqual(['First', 'Second', 'Later']);
+    expect(page.querySelector('[data-deadline-group="undated"] .date-tile')).toBeNull();
+    expect(page.querySelector('[data-deadline-group="undated"] .task-row')?.textContent).toContain('Undated');
+  });
+
+  it('distinguishes empty, completed-only, and undated-only deadline views', async () => {
+    const page = await renderHome([]);
+    await navigate('/deadlines');
+    expect(page.querySelector('.deadline-lead h2')?.textContent).toBe('No deadlines yet');
+    expect(page.querySelector('.deadline-brief button')?.textContent?.trim()).toBe('Add a task');
+    for (const [status, heading] of [['completed', 'All caught up'], ['pending', 'No dated tasks']] as const) {
+      workspaceStore().load();
+      http.expectOne('/api/tasks').flush([{ ...task, status }]);
+      fixture.detectChanges();
+      expect(page.querySelector('.deadline-lead h2')?.textContent).toBe(heading);
+    }
   });
 
   it('selects the nearest future deadline before undated active work', async () => {
@@ -136,8 +168,10 @@ describe('USAD views', () => {
     const page = await renderHome([]);
     expect(page.querySelector('#focus-title')?.textContent).toBe('Every great thing starts with one small step.');
     expect(page.querySelector('.home-priority .eyebrow')).toBeNull();
-    expect(page.querySelector('h1')?.textContent).toBe('Kamusta, Jaztin!');
-    expect(page.querySelector('.workspace-empty button')?.textContent).toContain('Create your first task');
+    expect(page.querySelector('h1')?.textContent).toBe('Musta, Jaztin!');
+    expect(page.querySelector('.today-date app-icon, .nav-tagline')).toBeNull();
+    expect(page.querySelector('.home-intro')?.textContent).not.toContain('Munting hakbang');
+    expect(page.querySelector('.workspace-empty button')?.textContent).toContain('Add your first task');
   });
 
   it('routes from bottom navigation and identifies the active screen', async () => {
@@ -175,6 +209,90 @@ describe('USAD views', () => {
     expect(request.request.body).toEqual(jasmine.objectContaining({ status: 'in-progress', order: jasmine.any(String) }));
     request.flush({ ...task, ...request.request.body });
     expect(workspaceStore().columns()['in-progress'][0].id).toBe(task.id);
+  });
+
+  function openMoveDialog() {
+    const trigger = fixture.nativeElement.querySelector('.move-control') as HTMLButtonElement;
+    fixture.ngZone!.run(() => trigger.click());
+    fixture.detectChanges();
+    return document.querySelector<HTMLElement>('.move-dialog')!;
+  }
+
+  for (const from of STATUSES) {
+    for (const to of STATUSES.filter(status => status !== from)) {
+      it(`moves a Board task from ${from} to ${to} through the shared store`, async () => {
+        await renderHome([{ ...task, status: from }, { ...task, id: 'other', title: 'Different task', status: to }]);
+        await navigate('/board');
+        workspaceStore().setFilter({ query: 'field notes' });
+        fixture.detectChanges();
+        const picker = openMoveDialog();
+        expect(picker.querySelector('#move-dialog-task')?.textContent).toBe(task.title);
+        const current = picker.querySelector<HTMLButtonElement>('.move-current')!;
+        expect(current.dataset['status']).toBe(from);
+        expect(current.textContent).toContain('Current stage');
+        current.click();
+        const url = '/api/tasks/' + task.id;
+        http.expectNone({ method: 'PATCH', url });
+        const destination = picker.querySelector<HTMLButtonElement>(`[data-status="${to}"]`)!;
+        expect(destination.querySelector('.move-stage-count')?.textContent?.trim()).toBe('1 task');
+        destination.click();
+        destination.click();
+        fixture.detectChanges();
+        expect(picker.querySelector('.move-saving')?.textContent).toContain('Moving…');
+        const request = http.expectOne({ method: 'PATCH', url });
+        expect(request.request.body.status).toBe(to);
+        expect(workspaceStore().tasks()[task.id].status).toBe(from);
+        request.flush({ ...task, ...request.request.body });
+        expect(workspaceStore().tasks()[task.id].status).toBe(to);
+      });
+    }
+  }
+
+  it('keeps the Board move picker but hides the redundant In Progress check action', async () => {
+    const view = await renderHome([{ ...task, status: 'in-progress' }]);
+    await navigate('/board');
+    const lane = view.querySelector<HTMLElement>('#stage-in-progress')!;
+    expect(lane.querySelector('.complete-action')).toBeNull();
+    const moveButton = lane.querySelector<HTMLButtonElement>('.move-control')!;
+    expect(moveButton.textContent).toContain('Move to');
+    expect(moveButton.getAttribute('aria-haspopup')).toBe('dialog');
+    moveButton.click();
+    fixture.detectChanges();
+    expect(document.querySelector('.move-dialog')).toBeTruthy();
+  });
+
+  it('keeps the woven three-lane Board icon decorative beside the active navigation label', async () => {
+    await navigate('/board');
+    const boardLink = fixture.debugElement.query(By.css('nav a[href="/board"]'));
+    const link = boardLink.nativeElement as HTMLAnchorElement;
+    expect(link.textContent?.trim()).toBe('Board');
+    expect(link.getAttribute('aria-current')).toBe('page');
+    expect(boardLink.query(By.directive(IconComponent)).injector.get(IconComponent).name()).toBe('banig');
+    expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('reconciles an uncertain Board move and blocks moving a deleted task', async () => {
+    await navigate('/board');
+    const picker = openMoveDialog();
+    const url = '/api/tasks/' + task.id;
+    const destination = picker.querySelector<HTMLButtonElement>('[data-status="in-progress"]')!;
+    destination.click();
+    http.expectOne({ method: 'PATCH', url }).error(new ProgressEvent('error'));
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(picker.querySelector('[role="alert"]')?.textContent).toContain('Could not confirm');
+    destination.click();
+    http.expectNone({ method: 'PATCH', url });
+    picker.querySelector<HTMLButtonElement>('.notice button')!.click();
+    http.expectOne('/api/tasks').flush([{ ...task, status: 'in-progress' }]);
+    fixture.detectChanges();
+    expect(picker.querySelector('.move-current')).toBe(destination);
+    workspaceStore().load();
+    http.expectOne('/api/tasks').flush([]);
+    fixture.detectChanges();
+    expect(picker.textContent).toContain('no longer on the Board');
+    expect(Array.from(picker.querySelectorAll('.move-stage'), lane => lane.getAttribute('aria-disabled')))
+      .toEqual(['true', 'true', 'true']);
   });
 
   it('opens the existing editor directly from the card text and restores focus on close', async () => {
@@ -289,15 +407,16 @@ describe('USAD views', () => {
 
   it('opens the independent garden and keeps Progress separate', async () => {
     await navigate('/garden');
-    http.expectOne('/api/garden').flush({ lifetime: 3, level: 2, available: 1 });
+    http.expectOne('/api/garden').flush({ revision: 2, lifetime: 3, waterings: 2, activeWaterings: 2, growth: 2, level: 2, available: 1, streak: 0 });
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
     expect(Array.from(page.querySelectorAll('nav .nav-inner a'), link => link.textContent?.trim())).toEqual([
       'Home', 'Board', 'Deadlines', 'Progress', 'Tanim',
     ]);
     expect(page.querySelector('nav [aria-current="page"]')?.getAttribute('aria-label')).toBe('Munting Tanim');
-    expect(fixture.nativeElement.textContent).toContain('Level 2 of 10');
-    expect(fixture.nativeElement.textContent).toContain('1 task to level 3');
+    expect(page.querySelector('.garden-level')?.textContent).toBe('Level 2');
+    expect(page.querySelector('.garden-record h2')?.textContent).toBe('Young sprout');
+    expect(page.querySelector('app-plant progress, app-plant .garden-back')).toBeNull();
     await navigate('/progress');
     expect(page.querySelector('nav [aria-current="page"]')?.textContent?.trim()).toBe('Progress');
     expect(page.querySelector('app-plant')).toBeNull();
@@ -310,26 +429,26 @@ describe('USAD views', () => {
     spyOn(window, 'matchMedia').and.returnValue(media as unknown as MediaQueryList);
     const view = fixture.nativeElement as HTMLElement;
     await navigate('/garden');
-    http.expectOne('/api/garden').flush({ lifetime: 6, level: 4, available: 1 });
+    http.expectOne('/api/garden').flush({ revision: 6, lifetime: 7, waterings: 6, activeWaterings: 6, growth: 6, level: 4, available: 1, streak: 0 });
     fixture.detectChanges();
     expect(view.querySelector('.plant-art')?.getAttribute('data-blossoms')).toBe('1');
-    expect(view.querySelector('.plant-fallback .fallback-flower')).not.toBeNull();
+    expect(view.querySelector('.plant-fallback .fallback-blossom')).not.toBeNull();
     expect(view.querySelector('.plant-ready')).toBeNull();
-    expect(view.querySelector('.flower-unfold')).toBeNull();
+    expect(view.querySelector('[data-watering]')).toBeNull();
 
-    view.querySelector<HTMLButtonElement>('.garden-water button')!.click();
+    view.querySelector<HTMLButtonElement>('.watering-control')!.click();
     const failed = http.expectOne('/api/garden/water');
     failed.flush({}, { status: 503, statusText: 'Unavailable' });
     await navigate('/home');
     await navigate('/garden');
-    http.expectOne('/api/garden').flush({ lifetime: 6, level: 4, available: 0 });
+    http.expectOne('/api/garden').flush({ revision: 7, lifetime: 7, waterings: 7, activeWaterings: 7, growth: 7, level: 4, available: 0, streak: 0 });
     fixture.detectChanges();
-    const retry = view.querySelector<HTMLButtonElement>('.garden-water button')!;
-    expect(retry.textContent).toContain('Retry watering');
+    const retry = view.querySelector<HTMLButtonElement>('.watering-control')!;
+    expect(retry.getAttribute('aria-label')).toContain('Retry watering');
     retry.click();
     const resolved = http.expectOne('/api/garden/water');
     expect(resolved.request.body).toEqual(failed.request.body);
-    resolved.flush({ lifetime: 6, level: 4, available: 0 });
+    resolved.flush({ revision: 7, lifetime: 7, waterings: 7, activeWaterings: 7, growth: 7, level: 4, available: 0, streak: 0, wateringNumber: 7, wateringRevision: 7 });
     fixture.detectChanges();
     expect(view.querySelector('.garden-feedback')?.textContent).toContain('Plant watered.');
     expect(view.querySelector('.plant-art')?.getAttribute('data-blossoms')).toBe('1');
@@ -366,7 +485,8 @@ describe('USAD views', () => {
     request.flush({ ...task, ...request.request.body });
     expect(await saving).toBeTrue();
     fixture.detectChanges();
-    expect(view.querySelector('app-usad-bloom')).not.toBeNull();
+    expect(view.querySelector('.feedback > app-icon')).not.toBeNull();
+    expect(view.querySelector('app-usad-bloom')).toBeNull();
     expect(view.querySelector('.bloom-animated')).toBeNull();
     expect(view.querySelector('.bloom-reward')).toBeNull();
     expect(view.querySelector('[role="status"]')?.textContent).toContain('Ayos! One task down.');
@@ -398,10 +518,11 @@ describe('USAD views', () => {
       fixture.ngZone!.run(() => fab.click());
       fixture.detectChanges();
       const taskDialog = document.querySelector<HTMLElement>('.cdk-overlay-container .task-dialog')!;
-      expect(getComputedStyle(taskDialog).backgroundColor).toBe('rgb(252, 253, 255)');
+      expect(getComputedStyle(taskDialog).backgroundColor).toBe('rgb(244, 246, 250)');
+      expect(getComputedStyle(taskDialog.querySelector('.field')!).backgroundColor).toBe('rgb(252, 253, 255)');
       expect(getComputedStyle(taskDialog.querySelector('.button-primary')!).backgroundColor).toBe('rgb(50, 78, 112)');
       appearance.selectMode('dark');
-      expect(getComputedStyle(taskDialog).backgroundColor).toBe('rgb(36, 47, 64)');
+      expect(getComputedStyle(taskDialog).backgroundColor).toBe('rgb(28, 38, 53)');
       taskDialog.querySelector<HTMLButtonElement>('[aria-label="Close task details"]')!.click();
     } finally {
       appearance.select(original);
@@ -413,7 +534,7 @@ describe('USAD views', () => {
     }
   });
 
-  it('offers a clean pending composer with saved subjects and a quick due date', () => {
+  it('reveals the native date field for custom dates and clears it without losing other values', () => {
     const dialog = TestBed.createComponent(CardDialogComponent);
     http.expectOne('/api/tasks').flush([task]);
     dialog.detectChanges();
@@ -423,10 +544,43 @@ describe('USAD views', () => {
     expect(page.querySelector('datalist option')?.getAttribute('value')).toBe('Research Methods');
     expect(page.querySelector('details')?.open).toBeFalse();
     const form = dialog.debugElement.query(By.directive(FormGroupDirective)).injector.get(FormGroupDirective).form;
-    const today = Array.from(page.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Today');
-    today?.click();
+    const button = (name: string) => Array.from(page.querySelectorAll('button')).find(el => el.textContent?.trim() === name)!;
+    const nativeDate = page.querySelector<HTMLInputElement>('#task-deadline')!;
+    expect(nativeDate.closest('[hidden]')).not.toBeNull();
+    button('Today').click();
     expect(form.value.dueDate).toBe(TestBed.inject(BoardStore).today());
+    button('Tomorrow').click();
+    const next = localDate(TestBed.inject(BoardStore).today());
+    next.setDate(next.getDate() + 1);
+    expect(form.value.dueDate).toBe(todayISO(next));
+    button('Choose date').click();
+    dialog.detectChanges();
+    expect(nativeDate.closest('[hidden]')).toBeNull();
+    nativeDate.value = '2030-01-15';
+    nativeDate.dispatchEvent(new Event('input'));
+    form.controls['title'].setValue('Lab notes');
+    expect(form.value.dueDate).toBe('2030-01-15');
+    button('Clear date').click();
+    dialog.detectChanges();
+    expect(nativeDate.closest('[hidden]')).not.toBeNull();
+    expect(form.value.dueDate).toBe('');
+    expect(form.value.title).toBe('Lab notes');
     expect(form.value.priority).toBe('medium');
+  });
+
+  it('enforces task name and subject length limits when submitting', () => {
+    const dialog = TestBed.createComponent(CardDialogComponent);
+    http.expectOne('/api/tasks').flush([task]);
+    dialog.detectChanges();
+    const formElement = dialog.debugElement.query(By.directive(FormGroupDirective));
+    const form = formElement.injector.get(FormGroupDirective).form;
+    form.controls['title'].setValue('a'.repeat(121));
+    form.controls['subject'].setValue('b'.repeat(61));
+    formElement.nativeElement.dispatchEvent(new Event('submit'));
+    dialog.detectChanges();
+    expect(dialog.nativeElement.querySelector('#title-error')?.textContent).toContain('120');
+    expect(dialog.nativeElement.querySelector('#subject-error')?.textContent).toContain('60');
+    http.expectNone({ method: 'POST', url: '/api/tasks' });
   });
 
   it('blocks submission for whitespace-only titles and invalid deadlines', () => {

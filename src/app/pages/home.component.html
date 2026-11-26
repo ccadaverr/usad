@@ -1,7 +1,6 @@
 <div class="page-intro home-intro">
-  <p class="today-date"><app-icon name="calendar" /> {{ date() | date:'EEEE, MMMM d' }}</p>
-  <h1 lang="fil">Kamusta, <bdi>{{ session.profile()?.displayName }}</bdi>!</h1>
-  <p lang="fil">Munting hakbang. Tunay na pag-usad.</p>
+  <p class="today-date">{{ date() | date:'EEEE, MMMM d' }}</p>
+  <h1 lang="fil">Musta, <bdi>{{ session.profile()?.displayName }}</bdi>!</h1>
 </div>
 
 @if (store?.loaded() && store; as board) {
@@ -11,8 +10,8 @@
     <section class="workspace-empty" aria-labelledby="focus-title">
       <h2 id="focus-title">Every great thing starts with one small step.</h2>
       <p>Add an assignment to give your day a place to begin.</p>
-      <button class="btn button button-primary" type="button" [disabled]="!board.canWrite()" (click)="dialogs?.openTask()">
-        <app-icon name="plus" />Create your first task
+      <button class="btn button button-primary first-task-action" type="button" [disabled]="!board.canWrite()" (click)="dialogs?.openTask()">
+        <app-icon name="plus" />Add your first task
       </button>
     </section>
   } @else {
@@ -31,11 +30,6 @@
             <p class="muted">{{ next.subject }} · <app-deadline [task]="next" /></p>
             <span class="priority" [attr.data-priority]="next.priority">{{ priorities[next.priority] }} priority</span>
           </div>
-          @if (next.status === 'pending') {
-            <div class="priority-actions">
-              <app-task-actions [task]="next" [labelVisible]="true" [showStart]="true" [showComplete]="false" />
-            </div>
-          }
         } @else {
           <h2 id="focus-title">You’re caught up</h2>
           <p class="muted">Every task on your board is complete.</p>
@@ -47,7 +41,7 @@
           <h2 id="agenda-heading">Agenda</h2>
           <a class="text-link" routerLink="/deadlines" aria-label="See all deadlines">See all <app-icon name="arrow" /></a>
         </div>
-        <app-task-list [tasks]="agenda()" emptyText="No open deadlines." />
+        <app-task-list [tasks]="agenda()" emptyText="No open deadlines." [showStart]="false" />
       </section>
     </div>
   }

@@ -1,7 +1,7 @@
 const { readFileSync, renameSync, rmSync, writeFileSync } = require('node:fs');
 const { dirname, join, resolve } = require('node:path');
 const jsonServer = require('json-server');
-const { gardenView, levelFor, reconcileGarden, spendWater } = require('./garden.cjs');
+const { DEFAULT_TIME_ZONE, gardenView, reconcileGarden, spendWater, upgradeGarden, wateringView } = require('./garden.cjs');
 const { createGuestApp } = require('./guest-api.cjs');
 
 function writeSnapshot(file, snapshot) {
@@ -17,7 +17,10 @@ function writeSnapshot(file, snapshot) {
 function createApp(file, persist = writeSnapshot) {
   const { garden: savedGarden, ...data } = JSON.parse(readFileSync(file, 'utf8'));
   let committed = structuredClone(data);
-  let garden = reconcileGarden(savedGarden, data.tasks);
+  let garden = upgradeGarden(savedGarden ?? {
+    version: 1, entries: data.tasks.filter(task => task.status === 'completed').map(({ id }) => ({ taskId: id })),
+  });
+  garden = reconcileGarden(garden, data.tasks, data.tasks);
 
   const app = jsonServer.create();
   const router = jsonServer.router(data);
@@ -28,7 +31,7 @@ function createApp(file, persist = writeSnapshot) {
   // Commit task status and reward in one file replacement so no partial award is observable.
   router.db.write = () => {
     const pending = router.db.getState();
-    const nextGarden = reconcileGarden(garden, pending.tasks);
+    const nextGarden = reconcileGarden(garden, pending.tasks, committed.tasks, Date.now(), DEFAULT_TIME_ZONE);
     try {
       persist(file, { ...pending, garden: nextGarden });
     } catch (error) {
@@ -39,23 +42,23 @@ function createApp(file, persist = writeSnapshot) {
     garden = nextGarden;
   };
 
-  app.get('/garden', (_request, response) => response.json(gardenView(garden)));
+  app.get('/garden', (_request, response) => response.json(gardenView(garden, committed.tasks)));
   app.post('/garden/water', (request, response) => {
     const id = request.body?.id;
     if (typeof id !== 'string' || !/^[a-z\d-]{16,80}$/i.test(id)) {
       return response.status(400).json({ message: 'Invalid watering identifier.' });
     }
-    const next = spendWater(garden, id);
+    const next = spendWater(garden, committed.tasks, id);
     if (!next) return response.status(409).json({ message: 'No water drops available.' });
-    if (next !== garden) {
+    if (next.garden !== garden) {
       try {
-        persist(file, { ...committed, garden: next });
+        persist(file, { ...committed, garden: next.garden });
       } catch {
         return response.status(503).json({ message: 'Could not save watering.' });
       }
-      garden = next;
+      garden = next.garden;
     }
-    return response.json(gardenView(garden));
+    return response.json(wateringView(next, committed.tasks));
   });
 
   app.use((request, response, next) => {
@@ -68,9 +71,6 @@ function createApp(file, persist = writeSnapshot) {
     if (request.method !== 'GET' && count > previousCount) {
       // These receipts describe an award only after the shared snapshot committed.
       response.set('X-USAD-Water-Earned', '1');
-      response.set('X-USAD-Garden-Lifetime', String(count));
-      const level = levelFor(count);
-      if (level > levelFor(previousCount)) response.set('X-USAD-Garden-Level', String(level));
     }
     response.jsonp(response.locals.data);
   };

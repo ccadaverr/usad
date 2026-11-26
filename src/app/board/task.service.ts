@@ -3,16 +3,17 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { Task, TaskPatch } from './board.models';
 
-export type SavedTask = Task & { awardedLevel?: number; earnedWater?: boolean; gardenLifetime?: number };
+export interface StreakMilestone { revision: number; before: number; after: number; }
+export type SavedTask = Task & { earnedWater?: boolean; gardenChanged?: boolean; milestone?: StreakMilestone };
 
 function savedTask(response: HttpResponse<Task>): SavedTask {
-  const level = response.headers.get('X-USAD-Garden-Level');
-  const lifetime = Number(response.headers.get('X-USAD-Garden-Lifetime'));
+  const streak = response.headers.get('X-USAD-Streak-Milestone');
+  const numbers = streak?.match(/^(\d+):(\d+):(\d+)$/)?.slice(1).map(Number);
   return {
     ...response.body!,
-    awardedLevel: level ? Number(level) : undefined,
+    milestone: numbers ? { revision: numbers[0], before: numbers[1], after: numbers[2] } : undefined,
     earnedWater: response.headers.get('X-USAD-Water-Earned') === '1',
-    gardenLifetime: Number.isSafeInteger(lifetime) && lifetime > 0 ? lifetime : undefined,
+    gardenChanged: response.headers.get('X-USAD-Garden-Changed') === '1',
   };
 }
 
@@ -38,8 +39,10 @@ export class TaskService {
     return this.http.patch<Task>(this.taskUrl(id), changes, { ...this.options, observe: 'response' }).pipe(map(savedTask));
   }
 
-  delete(id: string): Observable<unknown> {
-    return this.http.delete(this.taskUrl(id), this.options);
+  delete(id: string): Observable<boolean> {
+    return this.http.delete(this.taskUrl(id), { ...this.options, observe: 'response' }).pipe(
+      map(response => response.headers.get('X-USAD-Garden-Changed') === '1'),
+    );
   }
 
   private taskUrl(id: string): string {

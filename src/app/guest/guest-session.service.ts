@@ -101,7 +101,7 @@ export class GuestSession {
     return this.changeSession(async () => {
       await firstValueFrom(this.http.post<void>(api + '/bootstrap', null, requestOptions));
       try {
-        await firstValueFrom(this.http.post<SessionResponse>(api + '/guest', { displayName }, requestOptions));
+        await firstValueFrom(this.http.post<SessionResponse>(api + '/guest', { displayName, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }, requestOptions));
       } catch (failure) {
         if (failure instanceof HttpErrorResponse && failure.status >= 400 && failure.status < 500) throw failure;
         const restored = await this.refreshProfile();

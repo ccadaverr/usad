@@ -1,4 +1,4 @@
-export const COMPLETIONS_PER_LEVEL = 2;
+export const WATERINGS_PER_LEVEL = 2;
 export const MAX_GARDEN_LEVEL = 10;
 
 export const GARDEN_STAGES = [
@@ -6,18 +6,13 @@ export const GARDEN_STAGES = [
   'Branching in bloom', 'Flowering canopy', 'Fuller blooms', 'Late blossoms', 'Mature flowering plant',
 ] as const;
 
-export function gardenLevel(lifetime: number): number {
-  return Math.min(MAX_GARDEN_LEVEL, 1 + Math.floor(lifetime / COMPLETIONS_PER_LEVEL));
+export function wateringsUntilGrowth(level: number, growth: number): number {
+  return Math.max(0, Math.min((MAX_GARDEN_LEVEL - 1) * WATERINGS_PER_LEVEL, level * WATERINGS_PER_LEVEL) - growth);
 }
 
-export function completionsUntilGrowth(level: number, lifetime: number): number {
-  return level >= MAX_GARDEN_LEVEL ? 0 : Math.max(0, level * COMPLETIONS_PER_LEVEL - lifetime);
-}
-
-/** Intermediate rewards stretch the existing stem before the next foliage layer arrives. */
-export function stemStretch(lifetime: number): number {
-  const step = Math.min(lifetime, 18);
-  return 1 + step * .004 + (step % 2 ? .12 / (1 + Math.floor(step / 2) * .21) : 0);
+/** A persistent, monotonic stretch of the existing stem, including partial levels. */
+export function stemStretch(growth: number): number {
+  return 1 + .016 * growth + .097 * (1 - Math.exp(-.8 * growth));
 }
 
 export const FLOWER_SITES = [

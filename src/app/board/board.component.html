@@ -118,10 +118,10 @@
 
   @if (filtering || fullBoard()) {
     <p class="board-hint">
-      {{ filtering ? 'Use “Move to…” while filters are applied.' : 'Hold the grip to drag a task between stages.' }}
+      {{ filtering ? 'Use Move to while filters are applied.' : 'Hold the grip to drag a task between stages.' }}
     </p>
   } @else {
-    <p class="board-hint desktop-board-hint">Drag by the grip or use “Move to…” to change a task’s stage.</p>
+    <p class="board-hint desktop-board-hint">Drag by the grip or use Move to on a task card.</p>
   }
 
   @if (filtering && !results()) {

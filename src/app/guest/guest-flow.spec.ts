@@ -159,7 +159,7 @@ describe('Guest routing and first use', () => {
     (await pending('/api/tasks')).flush([]);
     await settled();
     expect(router.url).toBe('/home');
-    expect(view.querySelector('h1')?.textContent).toBe('Kamusta, Jaztin!');
+    expect(view.querySelector('h1')?.textContent).toBe('Musta, Jaztin!');
   });
 
   it('allows one leave at a time and waits for a verified empty session after retry', async () => {
@@ -269,10 +269,9 @@ describe('Guest routing and first use', () => {
     expect(newBoard).not.toBe(oldBoard);
     expect(newBoard.tasks()).toEqual({});
     expect(newBoard.completion()).toBeNull();
-    expect(newBoard.pendingGrowthLifetime()).toBeNull();
     expect(newWorkspace.get(GardenService).pendingWater()).toBeNull();
     expect(newWorkspace.get(CompletionMotion).position()).toBeNull();
-    expect(view.querySelector('h1')?.textContent).toBe('Kamusta, Alex!');
+    expect(view.querySelector('h1')?.textContent).toBe('Musta, Alex!');
   });
 
   it('stays at welcome when the browser cannot establish a cookie-backed workspace', async () => {
@@ -288,7 +287,7 @@ describe('Guest routing and first use', () => {
     });
     (await pending('/api/session/bootstrap')).flush(null, { status: 204, statusText: 'No Content' });
     const creation = await pending('/api/session/guest');
-    expect(creation.request.body).toEqual({ displayName: 'Jaztin' });
+    expect(creation.request.body).toEqual({ displayName: 'Jaztin', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
     fixture.ngZone!.run(() => creation.flush({ message: 'Allow cookies for USAD, then try again.' }, {
       status: 409, statusText: 'Conflict',
     }));
@@ -339,6 +338,20 @@ describe('Guest routing and first use', () => {
     expect(current()).toBe('Step 2: Progress');
   });
 
+  it('places Explore below the illustrations on all three slides and keeps Appearance in the header', async () => {
+    await showTour();
+    const header = view.querySelector('.entry-brand-actions')!;
+    expect(header.querySelectorAll('button.appearance-trigger').length).toBe(1);
+    expect(header.querySelector('.tour-skip')).toBeNull();
+    for (const step of ['Organize', 'Progress', 'Grow']) {
+      click(view.querySelector<HTMLButtonElement>(`[aria-label$=": ${step}"]`)!);
+      fixture.detectChanges();
+      const skip = view.querySelector('.tour-controls .tour-skip')!;
+      expect(skip.textContent).toContain('Explore now');
+      expect(skip.parentElement!.previousElementSibling?.classList.contains('tour-viewport')).toBeTrue();
+    }
+  });
+
   it('shows Grow until a separate intentional left swipe saves the tour', async () => {
     await showTour();
     const { pointer, current } = tourGesture();
@@ -371,7 +384,7 @@ describe('Guest routing and first use', () => {
     fixture.detectChanges();
     expect(view.querySelector('.tour-home-preview')).toBeNull();
     expect(view.querySelectorAll('app-home').length).toBe(1);
-    expect(view.querySelector('app-home h1')?.textContent).toBe('Kamusta, Jaztin!');
+    expect(view.querySelector('app-home h1')?.textContent).toBe('Musta, Jaztin!');
     tasks.flush([]);
     await settled();
     expect(router.url).toBe('/home');
@@ -386,7 +399,9 @@ describe('Guest routing and first use', () => {
     const preview = tour.querySelector<HTMLElement>('.tour-home-preview')!;
     expect(preview.inert).toBeTrue();
     expect(preview.getAttribute('aria-hidden')).toBe('true');
-    expect(preview.querySelector('app-home h1')?.textContent).toBe('Kamusta, Jaztin!');
+    expect(preview.querySelector('app-home h1')?.textContent).toBe('Musta, Jaztin!');
+    expect(preview.querySelector('.today-date app-icon, .nav-tagline')).toBeNull();
+    expect(preview.querySelector('.home-intro')?.textContent).not.toContain('Munting hakbang');
     expect(preview.querySelector('app-task-actions, .workspace-empty')).toBeNull();
 
     pointer('pointerdown', 230, 90, 100);
@@ -434,7 +449,7 @@ describe('Guest routing and first use', () => {
     (await pending('/api/tasks')).flush([]);
     await settled();
     expect(router.url).toBe('/home');
-    expect(view.querySelector('h1')?.textContent).toBe('Kamusta, Jaztin!');
+    expect(view.querySelector('h1')?.textContent).toBe('Musta, Jaztin!');
     expect(view.textContent).toContain('Every great thing starts with one small step.');
     expect(view.querySelector('.home-progress')).toBeNull();
   });
@@ -461,7 +476,7 @@ describe('Guest routing and first use', () => {
     (await pending('/api/tasks')).flush([]);
     await settled();
     expect(router.url).toBe('/home');
-    expect(view.querySelector('h1')?.textContent).toBe('Kamusta, Jaztin!');
+    expect(view.querySelector('h1')?.textContent).toBe('Musta, Jaztin!');
     http.expectNone('/api/session/onboarding-complete');
     http.expectNone('/api/session/guest');
   });

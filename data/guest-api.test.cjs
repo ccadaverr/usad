@@ -10,7 +10,10 @@ const { createGuestApp } = require('./guest-api.cjs');
 const { SESSION_MS } = require('./guest-storage.cjs');
 
 const origin = 'https://frontend.example';
-const blank = { lifetime: 0, level: 1, available: 0 };
+const assertGarden = (actual, expected) => assert.deepEqual(
+  Object.fromEntries(Object.keys(expected).map(key => [key, actual[key]])), expected,
+);
+const blank = { lifetime: 0, waterings: 0, growth: 0, level: 1, available: 0 };
 const task = {
   id: 'first-task', title: 'Finish field notes', subject: 'Research', description: '', dueDate: '2026-11-27',
   priority: 'medium', status: 'pending', order: 'a0', createdAt: '2026-11-24T04:00:00.000Z', updatedAt: '2026-11-24T04:00:00.000Z',
@@ -59,9 +62,9 @@ async function setup(context, options = {}) {
     assert.equal(result.status, 204);
     return result.headers.get('set-cookie');
   }
-  async function guest(displayName) {
+  async function guest(displayName, timeZone) {
     const cookie = (await bootstrap()).split(';')[0];
-    const result = await post('/session/guest', cookie, { displayName });
+    const result = await post('/session/guest', cookie, { displayName, timeZone });
     assert.equal(result.status, 201);
     return cookie;
   }
@@ -79,7 +82,7 @@ test('workspace profile, tasks, garden and watering are isolated and durable', a
   assert.notEqual(a, b);
   for (const cookie of [a, b]) {
     assert.deepEqual((await request('/tasks', { cookie })).body, []);
-    assert.deepEqual((await request('/garden', { cookie })).body, blank);
+    assertGarden((await request('/garden', { cookie })).body, blank);
   }
   const created = await post('/tasks', a, task);
   assert.equal(created.status, 201);
@@ -93,9 +96,9 @@ test('workspace profile, tasks, garden and watering are isolated and durable', a
   assert.equal(completed.headers.get('x-usad-water-earned'), '1');
   const watering = { id: 'guest-watering-0001' };
   assert.equal((await post('/garden/water', b, watering)).status, 409);
-  assert.deepEqual((await request('/garden', { cookie: a })).body, { ...blank, lifetime: 1, available: 1 });
-  assert.deepEqual((await post('/garden/water', a, watering)).body, { ...blank, lifetime: 1 });
-  assert.deepEqual((await request('/garden', { cookie: b })).body, blank);
+  assertGarden((await request('/garden', { cookie: a })).body, { ...blank, lifetime: 1, available: 1 });
+  assertGarden((await post('/garden/water', a, watering)).body, { ...blank, lifetime: 1, waterings: 1, growth: 1, wateringNumber: 1 });
+  assertGarden((await request('/garden', { cookie: b })).body, blank);
   assert.deepEqual((await request('/session', { cookie: a })).body, { guest: { displayName: 'Jaztin', onboardingComplete: false } });
 
   const saved = await post('/session/onboarding-complete', a);
@@ -109,14 +112,27 @@ test('workspace profile, tasks, garden and watering are isolated and durable', a
   assert.deepEqual((await request('/session', { cookie: a })).body, saved.body);
   assert.deepEqual((await request('/tasks', { cookie: a })).body, [completed.body]);
   assert.deepEqual((await request('/tasks', { cookie: b })).body, []);
-  assert.deepEqual((await post('/garden/water', a, watering)).body, { ...blank, lifetime: 1 });
+  assertGarden((await post('/garden/water', a, watering)).body, { ...blank, lifetime: 1, waterings: 1, growth: 1, wateringNumber: 1 });
   for (let index = 2; index <= 5; index++) {
     const result = await post('/tasks', a, { ...task, id: 'stage-' + index, status: 'completed' });
     assert.equal(result.headers.get('x-usad-water-earned'), '1');
-    assert.equal(result.headers.get('x-usad-garden-level'), index % 2 === 0 ? String(1 + index / 2) : null);
+    assert.equal(result.headers.get('x-usad-garden-level'), null);
   }
-  assert.deepEqual((await request('/garden', { cookie: a })).body, { lifetime: 5, level: 3, available: 4 });
-  assert.deepEqual((await request('/garden', { cookie: b })).body, blank);
+  assertGarden((await request('/garden', { cookie: a })).body,
+    { lifetime: 5, waterings: 1, growth: 1, level: 1, available: 4 });
+  const second = { id: 'guest-watering-0002' };
+  // Ignore the write response and retry the same ID after a restart.
+  await post('/garden/water', a, second);
+  await restart();
+  assertGarden((await post('/garden/water', a, second)).body,
+    { lifetime: 5, waterings: 2, growth: 2, level: 2, available: 3, wateringNumber: 2 });
+  assertGarden((await post('/garden/water', a, watering)).body,
+    { lifetime: 5, waterings: 2, growth: 2, level: 2, available: 3, wateringNumber: 1 });
+  const scope = (await request('/garden', { cookie: a })).headers.get('X-USAD-Garden-Scope');
+  assert.match(scope, /^[0-9a-f]{64}$/);
+  assert.equal((await request('/garden/water', { method: 'POST', cookie: b, body: second,
+    headers: { 'X-USAD-Garden-Scope': scope } })).status, 409);
+  assertGarden((await request('/garden', { cookie: b })).body, blank);
 });
 
 test('concurrent completion and undo/recompletion award one drop per guest task', async context => {
@@ -137,7 +153,7 @@ test('concurrent completion and undo/recompletion award one drop per guest task'
   assert.equal(completed.body.order, 'a2');
   assert.equal(completed.body.createdAt, task.createdAt);
   assert.equal(completed.headers.get('x-usad-water-earned'), null);
-  assert.deepEqual((await request('/garden', { cookie })).body, { lifetime: 1, level: 1, available: 1 });
+  assertGarden((await request('/garden', { cookie })).body, { ...blank, lifetime: 1, available: 1 });
 });
 
 test('secure host-only cookies, exact origin validation and fail-closed public routes', async context => {
@@ -231,7 +247,7 @@ test('storage failure or a linked guest file cannot expose state or award credit
   assert.equal(failed.status, 503);
   assert.equal(failed.headers.get('x-usad-water-earned'), null);
   assert.deepEqual((await request('/tasks', { cookie })).body, [task]);
-  assert.deepEqual((await request('/garden', { cookie })).body, blank);
+  assertGarden((await request('/garden', { cookie })).body, blank);
   assert.equal((await post('/session/onboarding-complete', cookie)).status, 503);
   assert.equal((await request('/session', { cookie })).body.guest.onboardingComplete, false);
 
@@ -242,8 +258,8 @@ test('storage failure or a linked guest file cannot expose state or award credit
   assert.equal((await post('/garden/water', cookie, watering)).status, 503);
   assert.equal((await request('/garden', { cookie })).body.available, 1);
   fail = false;
-  assert.deepEqual((await post('/garden/water', cookie, watering)).body, { ...blank, lifetime: 1 });
-  assert.deepEqual((await post('/garden/water', cookie, watering)).body, { ...blank, lifetime: 1 });
+  assertGarden((await post('/garden/water', cookie, watering)).body, { ...blank, lifetime: 1, waterings: 1, growth: 1, wateringNumber: 1 });
+  assertGarden((await post('/garden/water', cookie, watering)).body, { ...blank, lifetime: 1, waterings: 1, growth: 1, wateringNumber: 1 });
 
   const token = cookie.split('=')[1];
   const file = join(directory, createHash('sha256').update(token).digest('hex') + '.json');
@@ -286,9 +302,9 @@ test('leave clears only the browser cookie at its original scope and preserves b
   assert.deepEqual((await request('/session', { cookie: alex })).body.guest, { displayName: 'Alex', onboardingComplete: false });
   assert.deepEqual((await request('/tasks', { cookie: alex })).body, []);
   assert.equal((await request('/tasks/' + task.id, { cookie: alex })).status, 404);
-  assert.deepEqual((await request('/garden', { cookie: alex })).body, blank);
+  assertGarden((await request('/garden', { cookie: alex })).body, blank);
   assert.equal((await request('/session', { cookie: other })).body.guest.displayName, 'Lia');
-  assert.deepEqual((await request('/garden', { cookie: jaztin })).body, { lifetime: 1, level: 1, available: 1 });
+  assertGarden((await request('/garden', { cookie: jaztin })).body, { ...blank, lifetime: 1, available: 1 });
   assert.deepEqual(readFileSync(path), before);
 });
 
@@ -349,21 +365,137 @@ test('the Angular development proxy forwards matching cookie attributes for sess
   }
 });
 
-test('existing guest ledgers derive the faster level without rewriting credits or watering history', async context => {
+test('version-1 guest ledgers keep their growth, credits and receipts after one migration', async context => {
   const { guest, request, post, directory, restart } = await setup(context);
   const cookie = await guest('Jaztin');
   const key = createHash('sha256').update(cookie.split('=')[1]).digest('hex');
   const file = join(directory, key + '.json');
   const snapshot = JSON.parse(readFileSync(file, 'utf8'));
+  snapshot.garden.version = 1;
+  delete snapshot.garden.legacyWaterings;
   const watering = 'legacy-watering-0001';
   snapshot.garden.entries = Array.from({ length: 6 }, (_, index) => ({
     taskId: 'old-' + index, ...(index === 0 ? { wateringId: watering } : {}),
   }));
+  snapshot.tasks = snapshot.garden.entries.map(({ taskId: id }) => ({ ...task, id, status: 'completed' }));
   const original = JSON.stringify(snapshot) + '\n';
   writeFileSync(file, original);
   await restart();
-  const expected = { lifetime: 6, level: 4, available: 5 };
-  assert.deepEqual((await request('/garden', { cookie })).body, expected);
-  assert.deepEqual((await post('/garden/water', cookie, { id: watering })).body, expected);
+  const expected = { lifetime: 6, waterings: 1, growth: 6, level: 4, available: 5, streak: 0 };
+  assertGarden((await request('/garden', { cookie })).body, expected);
+  assertGarden((await post('/garden/water', cookie, { id: watering })).body, { ...expected, wateringNumber: null });
   assert.equal(readFileSync(file, 'utf8'), original);
+  const completion = await post('/tasks', cookie, { ...task, status: 'completed' });
+  assert.equal(completion.headers.get('X-USAD-Water-Earned'), '1');
+  assert.equal(completion.headers.get('X-USAD-Garden-Level'), null);
+  const committed = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(committed.garden.version, 3);
+  assert.equal(committed.garden.legacyWaterings, 5);
+  assert.deepEqual(committed.garden.entries.slice(0, 6), snapshot.garden.entries);
+  await restart();
+  assertGarden((await request('/garden', { cookie })).body, { ...expected, lifetime: 7, available: 6, streak: 1 });
+  assertGarden((await post('/garden/water', cookie, { id: 'legacy-watering-0002' })).body,
+    { ...expected, lifetime: 7, waterings: 2, growth: 7, wateringNumber: 2, streak: 1 });
+});
+
+test('revokes spent and unspent rewards atomically and reactivates their immutable original receipts', async context => {
+  const { guest, post, request, restart } = await setup(context);
+  const cookie = await guest('Reversible');
+  const view = async () => (await request('/garden', { cookie })).body;
+  const state = (id, status) => request('/tasks/' + id, { cookie, method: 'PATCH', body: { status } });
+  for (const id of ['one', 'two', 'three']) await post('/tasks', cookie, { ...task, id, status: 'completed' });
+  assertGarden(await view(), { available: 3, growth: 0, level: 1, streak: 1 });
+  const first = 'original-water-receipt-1';
+  const second = 'original-water-receipt-2';
+  await post('/garden/water', cookie, { id: first });
+  await post('/garden/water', cookie, { id: second });
+  assertGarden(await view(), { waterings: 2, activeWaterings: 2, growth: 2, level: 2, available: 1 });
+
+  assert.equal((await state('one', 'in-progress')).headers.get('x-usad-garden-changed'), '1');
+  assertGarden(await view(), { lifetime: 3, waterings: 2, activeWaterings: 1, growth: 1, level: 1, available: 1 });
+  await state('three', 'pending');
+  await restart();
+  assertGarden(await view(), { lifetime: 3, waterings: 2, activeWaterings: 1, available: 0 });
+  assertGarden((await post('/garden/water', cookie, { id: first })).body, {
+    waterings: 2, activeWaterings: 1, wateringNumber: 1, wateringRevision: 4, level: 1,
+  });
+  const reactivate = await state('one', 'completed');
+  assert.equal(reactivate.headers.get('x-usad-water-earned'), null);
+  assertGarden(await view(), { waterings: 2, activeWaterings: 2, level: 2, available: 0 });
+  await state('three', 'completed');
+  assertGarden(await view(), { available: 1, streak: 1 });
+  await request('/tasks/one', { cookie, method: 'DELETE' });
+  assertGarden(await view(), { activeWaterings: 1, available: 1 });
+  const recreated = await post('/tasks', cookie, { ...task, id: 'one', status: 'completed' });
+  assert.equal(recreated.headers.get('x-usad-water-earned'), null);
+  assertGarden(await view(), { lifetime: 3, waterings: 2, activeWaterings: 2, available: 1, streak: 1 });
+  const spends = await Promise.all(['concurrent-watering-1', 'concurrent-watering-2'].map(id => post('/garden/water', cookie, { id })));
+  assert.deepEqual(spends.map(result => result.status).sort(), [200, 409]);
+  assertGarden(await view(), { activeWaterings: 3, waterings: 3, available: 0 });
+});
+
+test('daily streak uses a fixed guest calendar, server time and active first completions', async context => {
+  let clock = Date.parse('2026-03-08T04:55:00Z'); // March 7 at 23:55 in New York.
+  const { guest, post, request, restart, directory } = await setup(context, { now: () => clock });
+  const cookie = await guest('Calendar', 'America/New_York');
+  const file = join(directory, createHash('sha256').update(cookie.split('=')[1]).digest('hex') + '.json');
+  const view = async () => (await request('/garden', { cookie })).body;
+  const create = id => post('/tasks', cookie, { ...task, id, status: 'completed', updatedAt: '2000-01-01T00:00:00Z' });
+  const update = (id, status) => request('/tasks/' + id, { cookie, method: 'PATCH', body: { status, updatedAt: '2099-01-01T00:00:00Z' } });
+  const key = readFileSync(join(directory, '.session-key'));
+  assert.match((await create('first')).headers.get('x-usad-streak-milestone'), /^1:0:1$/);
+  assert.equal((await create('same-day')).headers.get('x-usad-streak-milestone'), null);
+  assert.equal((await view()).streak, 1);
+  clock = Date.parse('2026-03-08T05:05:00Z');
+  assert.equal((await view()).streak, 1, 'Yesterday is still eligible early today');
+  assert.match((await create('next-day')).headers.get('x-usad-streak-milestone'), /^3:1:2$/);
+  assert.equal((await view()).streak, 2, 'Local midnight forms a new day');
+  await update('first', 'pending');
+  assert.equal((await view()).streak, 2, 'Another task supports that first day');
+  await update('same-day', 'in-progress');
+  assert.equal((await view()).streak, 1);
+  assert.equal((await update('first', 'completed')).headers.get('x-usad-streak-milestone'), null);
+  assert.equal((await view()).streak, 2, 'Recompletion restores its original date');
+  clock = Date.parse('2026-03-09T04:05:00Z'); // March 9 after the DST change, 23 hours later.
+  await update('next-day', 'pending');
+  await update('next-day', 'completed');
+  assert.equal((await view()).streak, 2, 'Toggling an old task cannot qualify the new day');
+  await create('after-dst');
+  await post('/session/guest', cookie, { displayName: 'Other', timeZone: 'Pacific/Honolulu' });
+  await restart();
+  assert.equal((await view()).streak, 3);
+  assert.deepEqual(readFileSync(join(directory, '.session-key')), key);
+  const saved = JSON.parse(readFileSync(file));
+  assert.equal(saved.profile.timeZone, 'America/New_York');
+  assert.deepEqual(saved.garden.entries.map(entry => entry.completionDay),
+    ['2026-03-07', '2026-03-07', '2026-03-08', '2026-03-09']);
+  assert.equal(saved.garden.entries[0].firstCompletedAt, '2026-03-08T04:55:00.000Z');
+  clock = Date.parse('2026-03-11T04:01:00Z');
+  assert.equal((await view()).streak, 0, 'A missed full calendar day breaks the streak');
+});
+
+test('version-2 migration keeps receipts and fixed allowance without dating legacy completions', async context => {
+  const { guest, request, post, restart, directory } = await setup(context, { now: () => Date.parse('2026-12-31T23:59:00Z') });
+  const cookie = await guest('Historic', 'Invalid/Zone');
+  const file = join(directory, createHash('sha256').update(cookie.split('=')[1]).digest('hex') + '.json');
+  const snapshot = JSON.parse(readFileSync(file));
+  snapshot.tasks = [{ ...task, status: 'completed' }];
+  snapshot.garden = { version: 2, legacyWaterings: 4, entries: [
+    { taskId: task.id, wateringId: 'previous-watering-1', wateringNumber: 1 },
+    { taskId: 'deleted', wateringId: 'previous-watering-2', wateringNumber: 2 },
+  ] };
+  delete snapshot.profile.timeZone;
+  const bytes = JSON.stringify(snapshot);
+  writeFileSync(file, bytes);
+  await restart();
+  assertGarden((await request('/garden', { cookie })).body, {
+    revision: 0, lifetime: 2, waterings: 2, activeWaterings: 1, growth: 5, available: 0, streak: 0,
+  });
+  const retry = await post('/garden/water', cookie, { id: 'previous-watering-2' });
+  assertGarden(retry.body, { wateringNumber: 2, wateringRevision: null, available: 0 });
+  assert.equal(readFileSync(file, 'utf8'), bytes);
+  await request('/tasks/' + task.id, { cookie, method: 'PATCH', body: { status: 'pending' } });
+  const migrated = JSON.parse(readFileSync(file));
+  assert.equal(migrated.profile.timeZone, 'UTC');
+  assert.deepEqual(migrated.garden, { ...snapshot.garden, version: 3, revision: 1 });
 });

@@ -10,7 +10,7 @@ import { BoardStore } from '../board/board.store';
   template: `
     <span class="deadline-context" [attr.data-urgency]="context().tone">
       {{ context().label }}@if (showDate() && task().dueDate; as value) {
-        <time [attr.datetime]="value"> · {{ date(value) | date:'MMM d' }}</time>
+        · <time [attr.datetime]="value">{{ date(value) | date:dateFormat() }}</time>
       }
     </span>
   `,
@@ -18,6 +18,7 @@ import { BoardStore } from '../board/board.store';
 export class DeadlineComponent {
   readonly task = input.required<Pick<Task, 'dueDate' | 'status'>>();
   readonly showDate = input(true);
+  readonly dateFormat = input('MMM d');
   private readonly store = inject(BoardStore);
   protected readonly date = localDate;
   protected readonly context = computed(() => deadlineContext(this.task(), this.store.today()));

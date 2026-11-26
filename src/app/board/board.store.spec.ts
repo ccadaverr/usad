@@ -53,21 +53,16 @@ describe('BoardStore with TaskService', () => {
     expect(store.undoTask()).toBeNull();
   });
 
-  it('announces a garden level only from the confirmed server receipt', async () => {
+  it('announces earned water without a garden level from a completion receipt', async () => {
     const store = load([first]);
     const completion = store.move(first.id, 'completed');
-    expect(store.pendingGrowthLifetime()).toBeNull();
     const request = http.expectOne({ method: 'PATCH', url: endpoint + '/one' });
     request.flush({ ...first, ...request.request.body }, { headers: {
       'X-USAD-Garden-Level': '2', 'X-USAD-Water-Earned': '1', 'X-USAD-Garden-Lifetime': '2',
     } });
     expect(await completion).toBeTrue();
-    expect(store.completion()?.gardenLevel).toBe(2);
-    expect(store.pendingGrowthLifetime()).toBe(2);
-    expect('awardedLevel' in store.tasks()[first.id]).toBeFalse();
-    expect(store.takeGardenGrowth(1)).toBeFalse();
-    expect(store.takeGardenGrowth(2)).toBeTrue();
-    expect(store.takeGardenGrowth(2)).toBeFalse();
+    expect(store.completion()).toEqual({ taskId: first.id, earnedWater: true });
+    expect('earnedWater' in store.tasks()[first.id]).toBeFalse();
   });
 
   it('emits a single confirmed Bloom and does not repeat water after undo and recompletion', async () => {
@@ -83,7 +78,6 @@ describe('BoardStore with TaskService', () => {
     expect(await complete).toBeTrue();
     expect(receipts).toEqual([true]);
     expect('earnedWater' in store.tasks()[first.id]).toBeFalse();
-    expect(store.takeGardenGrowth(1)).toBeTrue();
 
     const undo = store.undo();
     http.expectOne({ method: 'PATCH', url: endpoint + '/one' }).flush(first);
@@ -94,7 +88,6 @@ describe('BoardStore with TaskService', () => {
     repeat.flush({ ...first, ...repeat.request.body });
     expect(await again).toBeTrue();
     expect(receipts).toEqual([true, false]);
-    expect(store.takeGardenGrowth(1)).toBeFalse();
 
     store.load();
     http.expectOne(endpoint).flush([{ ...first, status: 'completed' }]);

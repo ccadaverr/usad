@@ -5,7 +5,7 @@ import { SwipeRowDirective } from '../shared/swipe-row.directive';
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { DialogsService } from '../shared/dialogs.service';
 import { IconComponent } from '../shared/icon.component';
-import { PRIORITY_LABELS, STATUSES, STATUS_LABELS, Task, TaskStatus } from './board.models';
+import { PRIORITY_LABELS, Task } from './board.models';
 import { BoardStore } from './board.store';
 
 @Component({
@@ -20,28 +20,21 @@ import { BoardStore } from './board.store';
       <div class="swipe-content">
         <h3>
           <button class="task-title" type="button" (click)="swipe.open($event) && dialogs.openTask(record)">
+            <span class="sr-only">Edit </span><span class="card-name">{{ record.title }}</span>
             <span class="card-subject">{{ record.subject }}</span>
-            <span>{{ record.title }}</span>
             <span class="card-meta">
-              <span class="priority" [attr.data-priority]="record.priority">{{ priorityLabels[record.priority] }} priority</span>
               <app-deadline [task]="record" />
+              <span class="card-priority" [attr.data-priority]="record.priority">{{ priorityLabels[record.priority] }} priority</span>
             </span>
           </button>
         </h3>
         <div class="card-controls">
-          <app-task-actions [task]="record" />
-          <label class="move-control">
-            <span class="sr-only">Move {{ record.title }} to another stage</span>
-            <select [disabled]="!store.canWrite()" (change)="move($event)">
-              <option value="" selected disabled>Move to…</option>
-              @for (status of statuses; track status) {
-                @if (status !== record.status) {
-                  <option [value]="status">{{ statusLabels[status] }}</option>
-                }
-              }
-            </select>
-            <app-icon name="chevron" />
-          </label>
+          <button #moveTrigger class="btn button move-control" type="button" aria-haspopup="dialog"
+            [attr.aria-label]="'Move to another stage: ' + record.title" [disabled]="!store.canWrite()"
+            (click)="dialogs.openMove(record.id, moveTrigger)">
+            <span>Move to</span><app-icon name="arrow" />
+          </button>
+          <app-task-actions [task]="record" [showComplete]="record.status === 'pending'" />
         </div>
       </div>
     </div>
@@ -51,14 +44,5 @@ export class CardComponent {
   readonly task = input.required<Task>();
   protected readonly store = inject(BoardStore);
   protected readonly dialogs = inject(DialogsService);
-  protected readonly statuses = STATUSES;
-  protected readonly statusLabels = STATUS_LABELS;
   protected readonly priorityLabels = PRIORITY_LABELS;
-
-  protected move(event: Event): void {
-    const select = event.target as HTMLSelectElement;
-    const status = select.value as TaskStatus;
-    select.value = '';
-    if (this.statuses.includes(status)) void this.store.move(this.task().id, status);
-  }
 }

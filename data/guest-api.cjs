@@ -1,6 +1,7 @@
+const { createHash } = require('node:crypto');
 const jsonServer = require('json-server');
 const bodyParser = require('body-parser');
-const { gardenView, reconcileGarden, spendWater } = require('./garden.cjs');
+const { emptyGarden, gardenView, guestTimeZone, reconcileGarden, spendWater, wateringView } = require('./garden.cjs');
 const { guestStorage, SESSION_MS } = require('./guest-storage.cjs');
 
 const DEV_ORIGINS = ['http://localhost:4200', 'http://127.0.0.1:4200'];
@@ -174,9 +175,9 @@ function createGuestApp(directory, {
     if (wait) return limited(response, wait);
     if (!storage.hasCapacity()) return error(response, 503, 'Guest workspaces are at capacity.');
     const workspace = {
-      profile: { displayName: name, onboardingComplete: false, expiresAt: session.expiresAt },
+      profile: { displayName: name, onboardingComplete: false, expiresAt: session.expiresAt, timeZone: guestTimeZone(request.body?.timeZone) },
       tasks: [],
-      garden: { version: 1, entries: [] },
+      garden: emptyGarden(),
     };
     if (save(response, workspace)) response.status(201).json({ guest: publicProfile(workspace) });
   });
@@ -198,17 +199,21 @@ function createGuestApp(directory, {
     next();
   }
 
-  function saveTask(response, task, status) {
+  function saveTask(response, task, status, previousTasks) {
     const workspace = response.locals.workspace;
-    const previous = gardenView(workspace.garden);
-    workspace.garden = reconcileGarden(workspace.garden, workspace.tasks);
-    const next = gardenView(workspace.garden);
-    if (next.lifetime > MAX_GARDEN_ENTRIES) return error(response, 409, 'This garden has reached its storage limit.');
+    const previous = workspace.garden;
+    const time = now();
+    const zone = workspace.profile.timeZone;
+    const next = reconcileGarden(previous, workspace.tasks, previousTasks, time, zone);
+    if (next.entries.length > MAX_GARDEN_ENTRIES) return error(response, 409, 'This garden has reached its storage limit.');
+    workspace.garden = next;
     if (!save(response, workspace)) return;
-    if (next.lifetime > previous.lifetime) {
+    if (next !== previous) response.set('X-USAD-Garden-Changed', '1');
+    if (next.entries.slice(previous.entries.length).some(entry => entry.taskId === task.id && entry.firstCompletedAt)) {
       response.set('X-USAD-Water-Earned', '1');
-      response.set('X-USAD-Garden-Lifetime', String(next.lifetime));
-      if (next.level > previous.level) response.set('X-USAD-Garden-Level', String(next.level));
+      const before = gardenView(previous, previousTasks, time, zone).streak;
+      const after = gardenView(next, workspace.tasks, time, zone).streak;
+      if (after > before) response.set('X-USAD-Streak-Milestone', `${next.revision}:${before}:${after}`);
     }
     response.status(status).json(task);
   }
@@ -217,7 +222,7 @@ function createGuestApp(directory, {
   app.get('/tasks/:id', requireWorkspace, findTask, (_request, response) => {
     response.json(response.locals.workspace.tasks[response.locals.index]);
   });
-  app.post('/tasks', requireWorkspace, parseJson, (request, response) => {
+  app.post('/tasks', parseJson, requireWorkspace, (request, response) => {
     const workspace = response.locals.workspace;
     const fields = ['id', 'createdAt', ...MUTABLE_TASK_FIELDS];
     const body = request.body ?? {};
@@ -229,10 +234,11 @@ function createGuestApp(directory, {
       return error(response, 409, 'A task with that identifier already exists.');
     }
     if (workspace.tasks.length >= maxTasks) return error(response, 409, 'This workspace has reached its task limit.');
-    workspace.tasks.push(task);
-    saveTask(response, task, 201);
+    const previousTasks = workspace.tasks;
+    workspace.tasks = [...previousTasks, task];
+    saveTask(response, task, 201, previousTasks);
   });
-  app.patch('/tasks/:id', requireWorkspace, parseJson, findTask, (request, response) => {
+  app.patch('/tasks/:id', parseJson, requireWorkspace, findTask, (request, response) => {
     const { workspace, index } = response.locals;
     const changes = request.body ?? {};
     if (!Object.keys(changes).length || Object.keys(changes).some(key => !MUTABLE_TASK_FIELDS.includes(key))) {
@@ -240,27 +246,39 @@ function createGuestApp(directory, {
     }
     const task = { ...workspace.tasks[index], ...changes };
     if (!taskValid(task)) return error(response, 400, 'Invalid task fields.');
-    workspace.tasks[index] = task;
-    saveTask(response, task, 200);
+    const previousTasks = workspace.tasks;
+    workspace.tasks = previousTasks.map((record, i) => i === index ? task : record);
+    saveTask(response, task, 200, previousTasks);
   });
   app.delete('/tasks/:id', requireWorkspace, findTask, (_request, response) => {
     const { workspace, index } = response.locals;
-    workspace.tasks.splice(index, 1);
-    if (save(response, workspace)) response.json({});
+    const previousTasks = workspace.tasks;
+    workspace.tasks = previousTasks.filter((_, i) => i !== index);
+    saveTask(response, {}, 200, previousTasks);
   });
 
-  app.get('/garden', requireWorkspace, (_request, response) => response.json(gardenView(response.locals.workspace.garden)));
-  app.post('/garden/water', requireWorkspace, parseJson, (request, response) => {
+  // An opaque namespace binds the browser's pending retry to the current guest.
+  function gardenScope(response) {
+    return createHash('sha256').update('garden-retry:' + response.locals.session.key).digest('hex');
+  }
+
+  app.get('/garden', requireWorkspace, (_request, response) => {
+    const { garden, tasks, profile } = response.locals.workspace;
+    response.set('X-USAD-Garden-Scope', gardenScope(response)).json(gardenView(garden, tasks, now(), profile.timeZone));
+  });
+  app.post('/garden/water', parseJson, requireWorkspace, (request, response) => {
+    const scope = request.get('X-USAD-Garden-Scope');
+    if (scope && scope !== gardenScope(response)) return error(response, 409, 'The guest workspace changed.');
     const id = request.body?.id;
     if (typeof id !== 'string' || !WATER_ID.test(id)) return error(response, 400, 'Invalid watering identifier.');
     const workspace = response.locals.workspace;
-    const next = spendWater(workspace.garden, id);
+    const next = spendWater(workspace.garden, workspace.tasks, id);
     if (!next) return error(response, 409, 'No water drops available.');
-    if (next !== workspace.garden) {
-      workspace.garden = next;
+    if (next.garden !== workspace.garden) {
+      workspace.garden = next.garden;
       if (!save(response, workspace)) return;
     }
-    response.json(gardenView(workspace.garden));
+    response.json(wateringView(next, workspace.tasks, now(), workspace.profile.timeZone));
   });
 
   app.use((_request, response) => error(response, 404, 'Route not found.'));
