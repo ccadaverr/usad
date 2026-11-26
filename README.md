@@ -7,21 +7,46 @@
 
 USAD is a Filipino-inspired productivity app for students. Keep assignments, deadlines, and academic progress in one workspace, then water a small interactive garden with drops earned by finishing tasks.
 
+**Developed and maintained by Jaztin**
+
 **[Open the live application](https://ccadaverr-usad-blue.vercel.app)**
 
-## Application screenshots
+## Mobile showcase
 
-![USAD Home showing Maya’s next priority, assignment progress, and daily agenda](docs/screenshots/home.webp)
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="docs/screenshots/welcome.webp"><img src="docs/screenshots/welcome.webp" width="98" height="212" alt="USAD welcome screen with Baybayin branding, a botanical illustration, and guest entry"></a>
+      <br><sub><strong>Welcome</strong></sub>
+    </td>
+    <td align="center">
+      <a href="docs/screenshots/home.webp"><img src="docs/screenshots/home.webp" width="98" height="212" alt="Mobile Home showing the next priority and agenda for a sample guest"></a>
+      <br><sub><strong>Home</strong></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="docs/screenshots/board.webp"><img src="docs/screenshots/board.webp" width="98" height="212" alt="Mobile Board in Focused View with the In Progress stage selected"></a>
+      <br><sub><strong>Board</strong></sub>
+    </td>
+    <td align="center">
+      <a href="docs/screenshots/deadlines.webp"><img src="docs/screenshots/deadlines.webp" width="98" height="212" alt="Mobile Deadlines with assignments grouped by urgency"></a>
+      <br><sub><strong>Deadlines</strong></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="docs/screenshots/progress.webp"><img src="docs/screenshots/progress.webp" width="98" height="212" alt="Mobile Progress showing the completion ring and counts by stage"></a>
+      <br><sub><strong>Progress</strong></sub>
+    </td>
+    <td align="center">
+      <a href="docs/screenshots/munting-tanim.webp"><img src="docs/screenshots/munting-tanim.webp" width="98" height="212" alt="Mobile Munting Tanim showing the potted plant, watering can, and water balance"></a>
+      <br><sub><strong>Munting Tanim</strong></sub>
+    </td>
+  </tr>
+</table>
 
-| Board | Deadlines |
-| --- | --- |
-| [![Three-stage Kanban board with Pending, In Progress, and Completed assignments](docs/screenshots/board.webp)](docs/screenshots/board.webp) | [![Open assignments grouped by urgency on the Deadlines page](docs/screenshots/deadlines.webp)](docs/screenshots/deadlines.webp) |
-| **Progress** | **Munting Tanim** |
-| [![Progress overview with completion percentage and task counts by stage](docs/screenshots/progress.webp)](docs/screenshots/progress.webp) | [![Munting Tanim showing a potted plant, watering can, water balance, and daily streak](docs/screenshots/munting-tanim.webp)](docs/screenshots/munting-tanim.webp) |
-
-[![Mobile Board in Focused View with the In Progress stage and bottom navigation](docs/screenshots/mobile.webp)](docs/screenshots/mobile.webp)
-
-All screenshots use a disposable local guest workspace with fictional coursework.
+Open any preview to see the full 390 × 844 capture. The screenshots use fictional coursework in a disposable local workspace.
 
 ## About USAD
 
@@ -80,9 +105,9 @@ npm run build
 
 The API test suite uses temporary local workspaces. [GitHub Actions workflow](.github/workflows/ci.yml)
 
-## About the developer
+## Developer and maintainer
 
-Hi, I’m **Jaztin**, a third-year Information Technology student at **Dr. Yanga's Colleges, Inc.**
+Hi, I’m **Jaztin**, the developer and maintainer of USAD and a third-year Information Technology student at **Dr. Yanga's Colleges, Inc.**
 
 USAD started as an academic requirement for our Professional Elective subject. I kept working on it beyond the course requirement because I wanted to make something other students could genuinely use. Building USAD gave me a way to explore how managing assignments, seeing progress, and caring for Munting Tanim could make everyday academic work feel more meaningful.
 
@@ -90,4 +115,4 @@ The application is deployed and usable. It’s an independent student project th
 
 ## Credits and license
 
-USAD is adapted from [TaskFlow by tiennd03](https://github.com/tiennd03/taskflow) and retains the [MIT license](LICENSE). The Baybayin wordmark uses [Noto Sans Tagalog](https://github.com/notofonts/tagalog) under the [SIL Open Font License](public/fonts/OFL.txt).
+USAD incorporates MIT-licensed work. See the [MIT license](LICENSE) and [acknowledgements](docs/ACKNOWLEDGEMENTS.md) for upstream and font attribution.
